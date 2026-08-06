@@ -1,23 +1,5 @@
 import { Button } from '@/components/ui/button';
 
-function WelcomeImage() {
-  return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
-    >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 interface WelcomeViewProps {
   startButtonText: string;
   onStartCall: () => void;
@@ -29,37 +11,98 @@ export const WelcomeView = ({
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+    <div ref={ref} className="min-h-screen w-full bg-slate-50 text-slate-900 overflow-x-hidden selection:bg-teal-200 selection:text-teal-900 flex flex-col">
+      
+      {/* Navbar */}
+      <nav className="w-full flex items-center justify-between px-6 lg:px-16 py-5 border-b border-slate-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-teal-600 flex items-center justify-center text-white font-extrabold text-lg shadow-sm">
+            S
+          </div>
+          <span className="font-bold text-lg tracking-tight text-slate-800">Saathi Swasthya</span>
+        </div>
+        <div className="hidden sm:flex items-center gap-4 text-sm font-medium text-slate-500">
+          <span className="px-3 py-1 bg-slate-100 rounded-full border border-slate-200 text-xs font-semibold text-slate-600">
+            EN | HI | GU
+          </span>
+        </div>
+      </nav>
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
-        </p>
+      {/* Hero Section */}
+      <main className="flex-1 flex flex-col lg:flex-row items-center max-w-6xl mx-auto w-full px-6 lg:px-16 py-16 lg:py-24 gap-12 lg:gap-20">
+        
+        {/* Left: Value Proposition */}
+        <section className="w-full lg:w-1/2 flex flex-col items-start text-left gap-6">
+          
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-100 text-teal-700 text-xs font-semibold">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+            </span>
+            Voice AI Beta
+          </div>
 
-        <Button
-          size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
-        >
-          {startButtonText}
-        </Button>
-      </section>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
+            Your personal{' '}
+            <span className="text-teal-600">health navigator.</span>
+          </h1>
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
-          >
-            Voice AI quickstart
-          </a>
-          .
-        </p>
-      </div>
+          <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-lg">
+            Speak naturally about your symptoms. Saathi will listen, understand, and guide you — in English, Hindi, or Gujarati.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto pt-2">
+            <Button
+              size="lg"
+              onClick={onStartCall}
+              className="w-full sm:w-auto h-12 px-8 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-[0.98] text-white font-semibold text-base shadow-sm transition-all duration-150"
+            >
+              🎙️ {startButtonText}
+            </Button>
+          </div>
+
+          {/* Medical Disclaimer */}
+          <div className="w-full max-w-lg flex gap-3 p-4 bg-amber-50 border border-amber-100 rounded-xl text-left items-start mt-2">
+            <span className="text-amber-500 text-lg leading-none mt-0.5">⚠️</span>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              Saathi is an AI triage assistant. It does not diagnose or prescribe.{' '}
+              <strong className="text-amber-800">For emergencies, call 112.</strong>
+            </p>
+          </div>
+        </section>
+
+        {/* Right: Chat Mockup */}
+        <section className="w-full lg:w-1/2 flex items-center justify-center">
+          <div className="w-full max-w-sm bg-slate-900 rounded-3xl shadow-xl p-6 space-y-4">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-700">
+              <div className="w-10 h-10 bg-teal-600 rounded-xl flex items-center justify-center text-white font-bold">S</div>
+              <div>
+                <div className="text-white font-semibold text-sm">Saathi Assistant</div>
+                <div className="text-teal-400 text-xs flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></span> Online
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="bg-slate-800 rounded-2xl rounded-tl-sm p-3 text-slate-200 text-sm w-[90%]">
+                Namaste! How are you feeling today?
+              </div>
+              <div className="bg-teal-600 rounded-2xl rounded-tr-sm p-3 text-white text-sm w-[80%] ml-auto">
+                I've had a mild fever since yesterday.
+              </div>
+              <div className="bg-slate-800 rounded-2xl rounded-tl-sm p-3 text-slate-200 text-sm w-[95%]">
+                I'm sorry to hear that. How high has the temperature been?
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      {/* Footer */}
+      <footer className="w-full text-center py-5 text-slate-400 text-xs border-t border-slate-100">
+        &copy; {new Date().getFullYear()} Saathi Swasthya · Built for the Murf AI Voice Agents Challenge
+      </footer>
     </div>
   );
 };
