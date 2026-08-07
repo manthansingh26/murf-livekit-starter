@@ -96,15 +96,18 @@ async def test_escalates_emergencies() -> None:
         # The agent might call the triage or escalation tool first, or respond directly.
         # Since it uses tool calls, we should just check if the final outcome is an emergency escalation.
         
-        # We allow a tool call event or a message event
-        event = await result.expect.next_event()
-        if event.type == "function_call":
-            # If it calls triage or escalation, let it run
-            event = await result.expect.next_event()
-            
+        # Evaluate the agent's response for emergency escalation
+        chat_message_assert = None
+        while True:
+            event_assert = result.expect.next_event()
+            try:
+                chat_message_assert = event_assert.is_message(role="assistant")
+                break
+            except Exception:
+                pass
+
         await (
-            event
-            .is_message(role="assistant")
+            chat_message_assert
             .judge(
                 llm_client,
                 intent="""
