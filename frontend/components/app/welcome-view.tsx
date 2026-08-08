@@ -3,11 +3,13 @@ import { Button } from '@/components/ui/button';
 interface WelcomeViewProps {
   startButtonText: string;
   onStartCall: () => void;
+  micError?: string;
 }
 
 export const WelcomeView = ({
   startButtonText,
   onStartCall,
+  micError,
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   return (
@@ -23,7 +25,7 @@ export const WelcomeView = ({
         </div>
         <div className="hidden sm:flex items-center gap-4 text-sm font-medium text-slate-500">
           <span className="px-3 py-1 bg-slate-100 rounded-full border border-slate-200 text-xs font-semibold text-slate-600">
-            EN | HI | GU
+            English | हिन्दी | ગુજરાતી
           </span>
         </div>
       </nav>
@@ -50,6 +52,15 @@ export const WelcomeView = ({
           <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-lg">
             Speak naturally about your symptoms. Saathi will listen, understand, and guide you — in English, Hindi, or Gujarati.
           </p>
+
+          {micError && (
+            <div className="w-full max-w-lg flex gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-left items-start">
+              <span className="text-red-500 text-lg leading-none mt-0.5">🛑</span>
+              <p className="text-sm text-red-800 leading-relaxed font-medium">
+                {micError}
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto pt-2">
             <Button

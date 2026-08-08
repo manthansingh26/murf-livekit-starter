@@ -2,12 +2,11 @@
 
 import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import type { ChatMessage } from '@livekit/components-react';
-import { AgentState } from '@livekit/components-core';
+import { type AgentState, type ReceivedMessage } from '@livekit/components-react';
 import { cn } from '@/lib/shadcn/utils';
 
 interface PremiumChatTranscriptProps {
-  messages: ChatMessage[];
+  messages: ReceivedMessage[];
   agentState: AgentState;
   className?: string;
 }

@@ -118,8 +118,8 @@ export function SaathiSessionView({
       {/* Main Split Layout */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
         
-        {/* Left Side: Premium Conversation History */}
-        <div className="hidden md:flex md:w-[380px] lg:w-[440px] border-r border-slate-200 bg-white flex-col relative z-20 shrink-0">
+        {/* Top/Left Side: Premium Conversation History */}
+        <div className="flex flex-col h-[40%] md:h-auto md:w-[380px] lg:w-[440px] border-b md:border-b-0 md:border-r border-slate-200 bg-white relative z-20 shrink-0 order-2 md:order-1">
           <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Medical Transcript</h2>
             <div className="text-[9px] text-teal-600 font-semibold bg-teal-50 border border-teal-100/50 px-2 py-0.5 rounded-full">Secure Session</div>
@@ -132,8 +132,8 @@ export function SaathiSessionView({
           </div>
         </div>
 
-        {/* Right Side: High-End Health Visualization Panel */}
-        <div className="flex-1 relative flex flex-col justify-between bg-slate-50 overflow-hidden p-6 gap-6 min-w-0">
+        {/* Bottom/Right Side: High-End Health Visualization Panel */}
+        <div className="flex-1 relative flex flex-col justify-between bg-slate-50 overflow-hidden p-4 md:p-6 gap-4 md:gap-6 min-w-0 order-1 md:order-2">
           
           {/* Soft Professional Warning Banner instead of Red Anxiety-inducing strip */}
           <div className="w-full bg-rose-50 border border-rose-100 rounded-2xl p-4 flex gap-3 shadow-sm shrink-0 items-start">

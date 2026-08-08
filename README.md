@@ -16,6 +16,18 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
 
 ---
 
+## 🏆 10 Days of Voice Agents Challenge Progress
+
+*   **Day 1:** Core LiveKit & Murf TTS pipeline established.
+*   **Day 2:** Healthcare System Prompt, Guardrails (Triage & Escalation tools), and automated LLM-as-a-judge tests implemented.
+*   **Day 3:** Personalized Health Access Frontend added with:
+    *   **5 Distinct Voice States:** Ready, Connecting, Listening, Speaking, and Call Ended.
+    *   **Premium Transcript:** Code-mixed support displaying exact script (English, Hindi, Gujarati) with clear Speaker Identity.
+    *   **Graceful Error Handling:** Handled microphone permission denials clearly.
+    *   **Multilingual Support:** Dynamic language matching in Gujarati, Hindi, and English using Deepgram's multi-language STT and Gemini's language mirroring.
+
+---
+
 ## 🎙️ Voice Architecture
 
 ```mermaid
