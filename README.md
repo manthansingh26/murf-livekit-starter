@@ -25,6 +25,12 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
     *   **Premium Transcript:** Code-mixed support displaying exact script (English, Hindi, Gujarati) with clear Speaker Identity.
     *   **Graceful Error Handling:** Handled microphone permission denials clearly.
     *   **Multilingual Support:** Dynamic language matching in Gujarati, Hindi, and English using Deepgram's multi-language STT and Gemini's language mirroring.
+*   **Day 4:** Persistent Caller Memory & Proactive Privacy Consent added with:
+    *   **SQLite Database Layer (`backend/src/db.py`)**: Stores long-term caller profiles (`caller_id`, `name`, `age_band`, `language_preference`, `ongoing_condition`, `last_triage_outcome`).
+    *   **Cookie-Based Stable Identity (`frontend/app/api/token/route.ts`)**: Generates and persists a stable caller identity across repeat calls via HTTP cookies.
+    *   **Caller Memory Tools (`backend/src/tools/memory.py`)**: `@function_tool` methods `lookup_caller_memory` & `save_caller_memory` integrated into the LiveKit Assistant.
+    *   **Proactive Privacy & Consent Engine**: Turn completion handler dynamically detects personal info and strictly enforces consent guardrails—never saving data unless the user explicitly grants permission.
+    *   **Memory Integration Tests (`backend/tests/test_memory.py` & `backend/src/test_db.py`)**: Verification scripts for database operations, memory persistence, and consent control flow.
 
 ---
 
@@ -33,20 +39,22 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
 ```mermaid
 graph TD
     User((User Voice)) -->|WebRTC| LiveKit[LiveKit Server]
-    LiveKit -->|Audio Stream| STT[Deepgram Nova-3]
+    LiveKit -->|Audio Stream| STT[Multilingual Deepgram STT]
     STT -->|Transcript| LLM[Gemini 3.5 Flash Lite]
-    LLM -->|Function Calling| Tools[Triage & Escalation Engine]
+    LLM -->|Function Calling| Tools[Triage, Escalation & Memory Tools]
+    Tools <--> DB[(SQLite Persistent Memory)]
     LLM -->|Text| TTS[Murf Falcon TTS]
     TTS -->|Synthesized Audio| LiveKit
     LiveKit -->|WebRTC| UserEar((User Audio))
 ```
 
 ## 🛠️ Tech Stack
-*   **Backend:** Python, LiveKit Agents SDK
-*   **Speech-to-Text (STT):** Deepgram Nova-3 (Multilingual)
+*   **Backend:** Python, LiveKit Agents SDK (`livekit-agents ~1.4`)
+*   **Speech-to-Text (STT):** Deepgram Nova-3 (Multilingual & dual-stream Gujarati/Hindi script matching)
 *   **Intelligence (LLM):** Google Gemini 3.5 Flash Lite
-*   **Text-to-Speech (TTS):** Murf Falcon API (Locale: en-IN, Voice: Anisha)
-*   **Frontend:** Next.js, React, TailwindCSS
+*   **Text-to-Speech (TTS):** Murf Falcon API (Locale: en-IN, Voice: Anisha, Style: Conversation)
+*   **Database & Memory:** SQLite + `aiosqlite` (Async persistent caller profile database)
+*   **Frontend:** Next.js, React, Tailwind CSS, LiveKit Agents UI Components
 
 ---
 
@@ -55,6 +63,7 @@ Medical AI carries immense responsibility. We have implemented a multi-layered s
 1.  **Prompt-Level Restraints:** The system prompt strictly prohibits diagnosis and prescription.
 2.  **Urgency Detection:** The agent actively monitors for keywords (e.g., "chest pain", "unconscious") to immediately escalate to emergency services (108 / 112).
 3.  **LLM-as-Judge Evals:** Our test suite uses automated LLM evaluation to prove the agent refuses harmful medical requests and diagnoses.
+4.  **Proactive Privacy & Consent:** Personal health and demographic details are saved ONLY when explicit user consent is given, respecting caller privacy.
 
 ---
 
