@@ -97,7 +97,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
       // Stop the tracks immediately, we just needed to verify permission
       stream.getTracks().forEach(track => track.stop());
 
-      await start();
+      await start({ tracks: { microphone: { enabled: true } } });
     } catch (err: any) {
       setAppState('ready');
       if (err.name === 'NotAllowedError' || err.message?.toLowerCase().includes('permission denied')) {
