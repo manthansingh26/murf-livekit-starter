@@ -26,11 +26,38 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
     *   **Graceful Error Handling:** Handled microphone permission denials clearly.
     *   **Multilingual Support:** Dynamic language matching in Gujarati, Hindi, and English using Deepgram's multi-language STT and Gemini's language mirroring.
 *   **Day 4:** Persistent Caller Memory & Proactive Privacy Consent added with:
-    *   **SQLite Database Layer (`backend/src/db.py`)**: Stores long-term caller profiles (`caller_id`, `name`, `age_band`, `language_preference`, `ongoing_condition`, `last_triage_outcome`).
-    *   **Cookie-Based Stable Identity (`frontend/app/api/token/route.ts`)**: Generates and persists a stable caller identity across repeat calls via HTTP cookies.
+    *   **PostgreSQL Database Layer (`backend/src/db.py`)**: Stores long-term caller profiles (`caller_id`, `name`, `language_preference`, `facts`, `last_interaction`) via `asyncpg` (`DATABASE_URL` env var).
+    *   **Stable Caller Identity (`frontend/app/api/token/route.ts` + `lib/utils.ts`)**: A `saathi_<uuid>` caller ID is minted once, persisted in `localStorage` (with an HTTP-cookie fallback), and reused as the LiveKit participant identity on every call — so Call 1 and Call 2 share the same `caller_id`.
     *   **Caller Memory Tools (`backend/src/tools/memory.py`)**: `@function_tool` methods `lookup_caller_memory` & `save_caller_memory` integrated into the LiveKit Assistant.
     *   **Proactive Privacy & Consent Engine**: Turn completion handler dynamically detects personal info and strictly enforces consent guardrails—never saving data unless the user explicitly grants permission.
     *   **Memory Integration Tests (`backend/tests/test_memory.py` & `backend/src/test_db.py`)**: Verification scripts for database operations, memory persistence, and consent control flow.
+*   **Day 5:** Real Health Facility Lookup Tool added — `find_nearby_health_facilities` queries live public OpenStreetMap data (Nominatim geocoder + Overpass API) to find real nearby hospitals, clinics, PHCs, and pharmacies, with graceful spoken fallbacks when the data source is unavailable.
+
+
+---
+
+## 🏥 Day 5 — Health Facility Lookup Tool
+
+**Tool name:** `find_nearby_health_facilities(location, facility_type)`
+
+**What it does:** When the caller asks to find a nearby hospital, clinic, health centre, PHC, pharmacy, or doctor, Saathi calls this tool. It geocodes the city/district via Nominatim, then queries the Overpass API for real health facilities within a 5 km radius and returns their name, type, address, coordinates, and approximate distance.
+
+**Data source:** LIVE external public data — **OpenStreetMap** (Nominatim geocoder + Overpass API). No API key required. Facility data is real, never invented.
+
+**Reliability:** The tool queries multiple public Overpass endpoints (`overpass-api.de` primary, plus `maps.mail.ru` and `kumi.systems` mirrors) with bounded failover — if the primary returns a timeout/5xx, the next endpoint is tried automatically. Nominatim geocode results are cached in memory (10 min TTL) so the same location is never re-queried within a conversation.
+
+**Data freshness:** Only a successful lookup carries a `retrieved_at` timestamp (ISO-8601 UTC). Error results deliberately have NO timestamp, so the agent can never claim data was retrieved after a failure. The agent mentions freshness only when the lookup actually succeeded.
+
+**Failure behavior (never hallucinates):**
+- Location cannot be identified → agent asks for the city/district again.
+- API timeout / HTTP 429/5xx / service unavailable / all endpoints down → agent says the live lookup is temporarily unavailable and does NOT invent a facility.
+- No facilities found → agent says so plainly and suggests trying a nearby town.
+- Distances are **approximate straight-line (haversine)**, never driving distance — the agent says so.
+
+**Example voice command:**
+> "Saathi, I am in Navsari. Can you find a nearby health facility?"
+
+**Safety:** The tool only locates facilities — it never diagnoses, never prescribes, and never replaces emergency services. Emergency escalation still takes priority.
 
 ---
 
@@ -42,7 +69,7 @@ graph TD
     LiveKit -->|Audio Stream| STT[Multilingual Deepgram STT]
     STT -->|Transcript| LLM[Gemini 3.5 Flash Lite]
     LLM -->|Function Calling| Tools[Triage, Escalation & Memory Tools]
-    Tools <--> DB[(SQLite Persistent Memory)]
+    Tools <--> DB[(PostgreSQL Caller Memory)]
     LLM -->|Text| TTS[Murf Falcon TTS]
     TTS -->|Synthesized Audio| LiveKit
     LiveKit -->|WebRTC| UserEar((User Audio))
@@ -53,7 +80,7 @@ graph TD
 *   **Speech-to-Text (STT):** Deepgram Nova-3 (Multilingual & dual-stream Gujarati/Hindi script matching)
 *   **Intelligence (LLM):** Google Gemini 3.5 Flash Lite
 *   **Text-to-Speech (TTS):** Murf Falcon API (Locale: en-IN, Voice: Anisha, Style: Conversation)
-*   **Database & Memory:** SQLite + `aiosqlite` (Async persistent caller profile database)
+*   **Database & Memory:** PostgreSQL + `asyncpg` (Async persistent caller profile database)
 *   **Frontend:** Next.js, React, Tailwind CSS, LiveKit Agents UI Components
 
 ---

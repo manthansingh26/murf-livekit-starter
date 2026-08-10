@@ -95,6 +95,52 @@ export function getStyles(appConfig: AppConfig) {
  * @param appConfig - The app configuration
  * @returns A token source for a sandboxed LiveKit session
  */
+/**
+ * Generate a stable anonymous caller ID for this browser, persisted in localStorage
+ * so it is REUSED across calls (Call 1 -> Call 2). The ID and the caller's real name
+ * are separate fields — the ID is never derived from personal data.
+ */
+function getStableCallerId(): string {
+  const KEY = 'saathi_caller_id';
+  try {
+    const existing = window.localStorage.getItem(KEY);
+    if (existing) {
+      return existing;
+    }
+    const fresh = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? `saathi_${crypto.randomUUID()}`
+      : `saathi_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    window.localStorage.setItem(KEY, fresh);
+    return fresh;
+  } catch {
+    // localStorage unavailable (private mode / blocked) — mint one for this page load.
+    // NOTE: when this happens, the /api/token route's `caller_identity` cookie is the
+    // fallback that keeps the identity stable across calls; only when BOTH localStorage
+    // and cookies are blocked does a caller look new on the next call.
+    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? `saathi_${crypto.randomUUID()}`
+      : `saathi_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+  }
+}
+
+/**
+ * Get a token source that sends the stable caller ID to the local /api/token route,
+ * so every voice call in this browser uses the SAME LiveKit participant identity.
+ */
+export function getLocalTokenSource() {
+  return TokenSource.custom(async () => {
+    const callerId = getStableCallerId();
+    const res = await fetch('/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ caller_id: callerId }),
+    });
+    return await res.json();
+  });
+}
+
 export function getSandboxTokenSource(appConfig: AppConfig) {
   return TokenSource.custom(async () => {
     const url = new URL(process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT!, window.location.origin);

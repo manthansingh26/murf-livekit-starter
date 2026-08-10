@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { randomUUID } from 'crypto';
 import { AccessToken, type AccessTokenOptions, type VideoGrant } from 'livekit-server-sdk';
 import { RoomConfiguration } from '@livekit/protocol';
 
@@ -44,17 +45,32 @@ export async function POST(req: Request) {
         { ignoreUnknownFields: true }
       );
     }
-      
-    // Retrieve caller identity from cookies, or generate a new one
+
+    // ---- STABLE CALLER IDENTITY (Day 4) ----
+    // Priority:
+    //   1. `caller_id` sent by the client (persisted in localStorage and reused
+    //      across calls — this is the source of truth).
+    //   2. `caller_identity` cookie set on a previous call.
+    //   3. Mint a strong UUID and persist it in BOTH the cookie and (via response)
+    //      the client's localStorage.
+    // The same stable ID must reach Call 2 so `lookup_caller_memory` can find
+    // the record saved during Call 1. We never use a random per-call identity.
     const cookieStore = await cookies();
-    let participantIdentity = cookieStore.get('caller_identity')?.value;
-    let isNewIdentity = false;
-    
-    if (!participantIdentity) {
-      participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
-      isNewIdentity = true;
-    }
-    
+    const cookieIdentity = cookieStore.get('caller_identity')?.value;
+    // Validate the client-supplied caller_id: safe charset + length cap (the DB
+    // column is VARCHAR(255) and the value becomes the LiveKit participant identity).
+    const rawBodyId = typeof body?.caller_id === 'string' ? body.caller_id.trim() : '';
+    const bodyIdentity =
+      rawBodyId.length > 0 &&
+      rawBodyId.length <= 100 &&
+      /^[a-zA-Z0-9_-]+$/.test(rawBodyId)
+        ? rawBodyId
+        : '';
+
+    const participantIdentity =
+      bodyIdentity || cookieIdentity || `saathi_${randomUUID()}`;
+    const isNewIdentity = !cookieIdentity || cookieIdentity !== participantIdentity;
+
     const participantName = 'user';
     const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
@@ -71,12 +87,14 @@ export async function POST(req: Request) {
       participantName,
       participantToken,
     };
-    
+
     const headers = new Headers({
       'Cache-Control': 'no-store',
     });
     const response = NextResponse.json(data, { headers });
-    
+
+    // Keep the cookie in sync so the identity also survives localStorage clears
+    // and works for browsers where the client-side storage is unavailable.
     if (isNewIdentity) {
       response.cookies.set('caller_identity', participantIdentity, {
         path: '/',
@@ -84,7 +102,7 @@ export async function POST(req: Request) {
         sameSite: 'lax',
       });
     }
-    
+
     return response;
   } catch (error) {
     if (error instanceof Error) {

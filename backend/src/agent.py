@@ -1,11 +1,9 @@
+import json
 import logging
 import os
+import re
+from pathlib import Path
 
-from prompts import SAATHI_SYSTEM_PROMPT
-from tools.triage import TriageTools
-from tools.escalation import EscalationTools
-from tools.memory import MemoryTools
-from db import init_db
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -15,21 +13,31 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     cli,
-    inference,
-    tokenize,
-    room_io,
     llm,
+    room_io,
+    tokenize,
 )
-from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
+from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-import re
+from db import db_target_info, init_db, lookup_caller
+from prompts import SAATHI_SYSTEM_PROMPT
+from tools.escalation import EscalationTools
+from tools.health_access import HealthAccessTools
+from tools.memory import MemoryTools
+from tools.triage import TriageTools
+
 logger = logging.getLogger("agent")
 
-load_dotenv(".env.local")
+# Load backend/.env.local by ABSOLUTE path so the process works no matter which
+# directory it is launched from (terminal, IDE, start_app.ps1, etc.). override=True
+# makes backend/.env.local the single authoritative local configuration.
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(_BACKEND_DIR / ".env.local", override=True)
+load_dotenv(".env.local")  # fallback for other relative configs
 
-import time
-from livekit.agents import NOT_GIVEN, DEFAULT_API_CONNECT_OPTIONS, stt
+from livekit.agents import DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, stt  # noqa: E402
+
 
 class MultilingualDeepgramStream(stt.RecognizeStream):
     def __init__(self, stt_instance, conn_options, stream_multi, stream_gu):
@@ -59,22 +67,55 @@ class MultilingualDeepgramStream(stt.RecognizeStream):
 
     async def _run(self) -> None:
         import asyncio
-        
+
         async def run_multi():
             async for ev in self._stream_multi:
                 if ev.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
-                    text_multi = ev.alternatives[0].text if (ev.alternatives and len(ev.alternatives) > 0) else ''
-                    
-                    latin_chars = len(re.findall(r'[a-zA-Z]', text_multi))
-                    hindi_chars = len(re.findall(r'[\u0900-\u097F]', text_multi))
+                    text_multi = (
+                        ev.alternatives[0].text
+                        if (ev.alternatives and len(ev.alternatives) > 0)
+                        else ""
+                    )
+
+                    latin_chars = len(re.findall(r"[a-zA-Z]", text_multi))
+                    hindi_chars = len(re.findall(r"[\u0900-\u097F]", text_multi))
                     total_words = len(text_multi.split())
-                    latin_words = len(re.findall(r'\b[a-zA-Z]+\b', text_multi))
-                    
-                    hindi_markers = ['मेरा', 'मेरी', 'मेरे', 'मुझे', 'आप', 'आपका', 'आपकी', 'है', 'हैं', 'क्या', 'नहीं', 'था', 'थी', 'थे', 'हुआ', 'हुई', 'कैसा', 'कैसी', 'कैसे', 'सब', 'हम', 'हमारे']
+                    latin_words = len(re.findall(r"\b[a-zA-Z]+\b", text_multi))
+
+                    hindi_markers = [
+                        "मेरा",
+                        "मेरी",
+                        "मेरे",
+                        "मुझे",
+                        "आप",
+                        "आपका",
+                        "आपकी",
+                        "है",
+                        "हैं",
+                        "क्या",
+                        "नहीं",
+                        "था",
+                        "थी",
+                        "थे",
+                        "हुआ",
+                        "हुई",
+                        "कैसा",
+                        "कैसी",
+                        "कैसे",
+                        "सब",
+                        "हम",
+                        "हमारे",
+                    ]
                     has_hindi_marker = any(w in text_multi for w in hindi_markers)
-                    
+
                     # English or Hindi from multi stream always takes priority over phonetic gujarati transliteration
-                    if (latin_words > 0 and (latin_words >= total_words * 0.4 or latin_chars > hindi_chars)) or (hindi_chars > 0 and has_hindi_marker):
+                    if (
+                        latin_words > 0
+                        and (
+                            latin_words >= total_words * 0.4
+                            or latin_chars > hindi_chars
+                        )
+                    ) or (hindi_chars > 0 and has_hindi_marker):
                         self._event_ch.send_nowait(ev)
                 else:
                     self._event_ch.send_nowait(ev)
@@ -82,30 +123,44 @@ class MultilingualDeepgramStream(stt.RecognizeStream):
         async def run_gu():
             async for ev in self._stream_gu:
                 if ev.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
-                    text_gu = ev.alternatives[0].text if (ev.alternatives and len(ev.alternatives) > 0) else ''
-                    gujarati_chars = len(re.findall(r'[\u0A80-\u0AFF]', text_gu))
+                    text_gu = (
+                        ev.alternatives[0].text
+                        if (ev.alternatives and len(ev.alternatives) > 0)
+                        else ""
+                    )
+                    gujarati_chars = len(re.findall(r"[\u0A80-\u0AFF]", text_gu))
                     if gujarati_chars > 0:
                         self._event_ch.send_nowait(ev)
 
         await asyncio.gather(run_multi(), run_gu())
 
+
 class MultilingualDeepgramSTT(stt.STT):
     def __init__(self, api_key: str | None = None):
-        super().__init__(capabilities=stt.STTCapabilities(streaming=True, interim_results=True))
+        super().__init__(
+            capabilities=stt.STTCapabilities(streaming=True, interim_results=True)
+        )
         api_key = api_key or os.getenv("DEEPGRAM_API_KEY")
         if not api_key:
             load_dotenv(".env.local")
             api_key = os.getenv("DEEPGRAM_API_KEY")
-        self._stt_multi = deepgram.STT(model="nova-3", language="multi", api_key=api_key)
+        self._stt_multi = deepgram.STT(
+            model="nova-3", language="multi", api_key=api_key
+        )
         self._stt_gu = deepgram.STT(model="nova-3", language="gu", api_key=api_key)
 
-    async def _recognize_impl(self, buffer, *, language=NOT_GIVEN, conn_options=DEFAULT_API_CONNECT_OPTIONS):
-        return await self._stt_multi._recognize_impl(buffer, language=language, conn_options=conn_options)
+    async def _recognize_impl(
+        self, buffer, *, language=NOT_GIVEN, conn_options=DEFAULT_API_CONNECT_OPTIONS
+    ):
+        return await self._stt_multi._recognize_impl(
+            buffer, language=language, conn_options=conn_options
+        )
 
     def stream(self, *, language=NOT_GIVEN, conn_options=DEFAULT_API_CONNECT_OPTIONS):
         s_multi = self._stt_multi.stream(language=language, conn_options=conn_options)
         s_gu = self._stt_gu.stream(language=language, conn_options=conn_options)
         return MultilingualDeepgramStream(self, conn_options, s_multi, s_gu)
+
 
 def detect_language(text: str) -> str:
     """
@@ -114,13 +169,15 @@ def detect_language(text: str) -> str:
     """
     if not text:
         return "English"
-    
-    gujarati_chars = len(re.findall(r'[\u0A80-\u0AFF]', text))
-    hindi_chars = len(re.findall(r'[\u0900-\u097F]', text))
-    latin_words = len(re.findall(r'\b[a-zA-Z]+\b', text))
+
+    gujarati_chars = len(re.findall(r"[\u0A80-\u0AFF]", text))
+    hindi_chars = len(re.findall(r"[\u0900-\u097F]", text))
+    latin_words = len(re.findall(r"\b[a-zA-Z]+\b", text))
     total_words = len(text.split())
-    
-    if latin_words > 0 and (latin_words >= total_words * 0.4 or latin_words > gujarati_chars):
+
+    if latin_words > 0 and (
+        latin_words >= total_words * 0.4 or latin_words > gujarati_chars
+    ):
         return "English"
     elif gujarati_chars > hindi_chars and gujarati_chars > 0:
         return "Gujarati"
@@ -129,36 +186,77 @@ def detect_language(text: str) -> str:
     else:
         return "English"
 
+
 def analyze_consent_turn(text: str) -> str:
     text_lower = text.lower()
-    
+
     info_patterns = [
-        r'\bmy name is\b', r'\bi am\b', r'\bname\'s\b', r'\byears old\b', r'\bage is\b',
-        r'मेरा नाम', r'मेरी उम्र', r'मैं .* हूँ', r'महीने', r'साल',
-        r'મારું નામ', r'મારી ઉંમર', r'હું .* છું'
+        r"\bmy name is\b",
+        r"\bi am\b",
+        r"\bname\'s\b",
+        r"\byears old\b",
+        r"\bage is\b",
+        r"मेरा नाम",
+        r"मेरी उम्र",
+        r"मैं .* हूँ",
+        r"महीने",
+        r"साल",
+        r"મારું નામ",
+        r"મારી ઉંમર",
+        r"હું .* છું",
     ]
     has_info = any(re.search(p, text_lower, re.IGNORECASE) for p in info_patterns)
-    
+
     save_patterns = [
-        r'\bremember\b', r'\bsave\b', r'\bstore\b', r'\bkeep\b',
-        r'याद', r'सहेज', r'સેવ', r'યાદ', r'સાચવો'
+        r"\bremember\b",
+        r"\bsave\b",
+        r"\bstore\b",
+        r"\bkeep\b",
+        r"याद",
+        r"सहेज",
+        r"સેવ",
+        r"યાદ",
+        r"સાચવો",
     ]
-    has_explicit_save = any(re.search(p, text_lower, re.IGNORECASE) for p in save_patterns)
-    
+    has_explicit_save = any(
+        re.search(p, text_lower, re.IGNORECASE) for p in save_patterns
+    )
+
     no_patterns = [
-        r'\bno\b', r'\bdon\'t\b', r'\bdo not\b', r'\bnever\b', r'\bno thanks\b',
-        r'नहीं', r'नही', r'ना', r'मत',
-        r'ના', r'નથી', r'નહી'
+        r"\bno\b",
+        r"\bdon\'t\b",
+        r"\bdo not\b",
+        r"\bnever\b",
+        r"\bno thanks\b",
+        r"नहीं",
+        r"नही",
+        r"ना",
+        r"मत",
+        r"ના",
+        r"નથી",
+        r"નહી",
     ]
     has_no = any(re.search(p, text_lower, re.IGNORECASE) for p in no_patterns)
-    
+
     yes_patterns = [
-        r'\byes\b', r'\byeah\b', r'\byep\b', r'\bsure\b', r'\bokay\b', r'\bok\b', r'\bplease do\b', r'\bremember it\b', r'\bsave it\b',
-        r'हाँ', r'हा', r'जी', r'ज़रूर',
-        r'હા', r'ચોક્કસ'
+        r"\byes\b",
+        r"\byeah\b",
+        r"\byep\b",
+        r"\bsure\b",
+        r"\bokay\b",
+        r"\bok\b",
+        r"\bplease do\b",
+        r"\bremember it\b",
+        r"\bsave it\b",
+        r"हाँ",
+        r"हा",
+        r"जी",
+        r"ज़रूर",
+        r"હા",
+        r"ચોક્કસ",
     ]
     has_yes = any(re.search(p, text_lower, re.IGNORECASE) for p in yes_patterns)
-    
+
     if has_info:
         if has_explicit_save:
             return "EXPLICIT_SAVE_REQUESTED"
@@ -171,24 +269,110 @@ def analyze_consent_turn(text: str) -> str:
     else:
         return "NORMAL_TURN"
 
-class Assistant(Agent, TriageTools, EscalationTools, MemoryTools):
+
+def format_returning_caller_instruction(record: dict) -> str:
+    """Build the deterministic SYSTEM INSTRUCTION block from a caller_memory record.
+
+    The record is loaded from PostgreSQL (through the existing memory system) at the
+    start of the call. This is a dynamic per-turn instruction — NOT a hardcoded prompt
+    result — so the agent greets the returning caller by name on the very first turn.
+    """
+    name = record.get("name") or ""
+    language_pref = record.get("language_preference") or ""
+    facts = record.get("facts") or {}
+    if isinstance(facts, str):
+        try:
+            facts = json.loads(facts)
+        except Exception:
+            facts = {}
+    facts_str = ", ".join(f"{k}: {v}" for k, v in facts.items() if v)
+
+    parts = []
+    if name:
+        parts.append(f"name: {name}")
+    if language_pref:
+        parts.append(f"language_preference: {language_pref}")
+    if facts_str:
+        parts.append(f"known_facts: {facts_str}")
+
+    if name:
+        greeting = (
+            "You MUST greet them warmly BY NAME "
+            f"(e.g. 'Welcome back, {name}. How can I help you today?') and DO NOT ask them "
+            "for their name — it is already known."
+        )
+    else:
+        greeting = (
+            "They have not shared a name yet — greet them warmly as a returning caller "
+            "and ask how they are feeling today."
+        )
+
+    return (
+        "\n\n[SYSTEM INSTRUCTION: The caller profile for this session was loaded from the "
+        f"database. Profile — {'; '.join(parts) or 'no stored fields'}. "
+        "This is a RETURNING CALLER. "
+        f"{greeting} "
+        "Respond in the same language and script as the user's CURRENT turn.]"
+    )
+
+
+class Assistant(Agent, TriageTools, EscalationTools, MemoryTools, HealthAccessTools):
     def __init__(self, user_id: str = "default_user") -> None:
         super().__init__(instructions=SAATHI_SYSTEM_PROMPT.format(user_id=user_id))
+        self.user_id = user_id
+        self._memory_injected = False
+
+    async def _inject_caller_memory(self, new_message: llm.ChatMessage) -> None:
+        """Deterministic returning-caller memory lookup, run ONCE on the first user turn.
+
+        Loads the caller profile from PostgreSQL through the existing memory system and
+        appends a SYSTEM INSTRUCTION so the agent KNOWS the caller before generating its
+        first response — no reliance on the LLM randomly deciding to call a tool.
+
+        NOTE: The LLM may additionally call the `lookup_caller_memory` tool because the
+        system prompt asks it to — that redundant read is intentional (belt and braces)
+        and must not replace this deterministic path.
+        """
+        if self._memory_injected:
+            return
+        self._memory_injected = True
+
+        try:
+            record = await lookup_caller(self.user_id)
+        except Exception as e:
+            logger.error(
+                f"[MEMORY DEBUG] lookup_result=ERROR user_id={self.user_id} reason={e}"
+            )
+            return
+
+        if record:
+            logger.info(
+                f"[MEMORY DEBUG] lookup_result=FOUND user_id={self.user_id} "
+                f"name={record.get('name')}"
+            )
+            new_message.content.append(format_returning_caller_instruction(record))
+        else:
+            logger.info(
+                f"[MEMORY DEBUG] lookup_result=NOT_FOUND user_id={self.user_id}"
+            )
 
     async def on_user_turn_completed(
         self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
     ) -> None:
         if new_message and new_message.text_content:
+            await self._inject_caller_memory(new_message)
+
             detected = detect_language(new_message.text_content)
             consent_action = analyze_consent_turn(new_message.text_content)
-            
+
             logger.info("----------------------------------------")
             logger.info("TURN DIAGNOSTICS")
+            logger.info(f"Caller ID: {self.user_id}")
             logger.info(f"Transcript: {new_message.text_content}")
             logger.info(f"Language: {detected}")
             logger.info(f"Consent Action: {consent_action}")
             logger.info("----------------------------------------")
-            
+
             if detected == "Gujarati":
                 lang_inst = "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as GUJARATI. You MUST respond in natural Gujarati using the Gujarati script. Do NOT respond in Hindi or Romanized Gujarati. Preserve English medical terms natively.]"
             elif detected == "Hindi":
@@ -207,12 +391,12 @@ class Assistant(Agent, TriageTools, EscalationTools, MemoryTools):
             elif consent_action == "EXPLICIT_SAVE_REQUESTED":
                 consent_inst = (
                     "\n\n[CONSENT RULE: The user explicitly requested to save/remember their information in this turn (e.g. 'remember my name'). "
-                    "You MAY call save_caller_memory now with the provided facts, and confirm naturally.]"
+                    f"You MAY call save_caller_memory now with user_id='{self.user_id}' and the provided facts, and confirm naturally.]"
                 )
             elif consent_action == "CONSENT_GRANTED":
                 consent_inst = (
                     "\n\n[CONSENT RULE: The user explicitly GRANTED PERMISSION to save their information. "
-                    "You MUST call save_caller_memory now with the facts provided previously in the conversation, and confirm naturally.]"
+                    f"You MUST call save_caller_memory now with user_id='{self.user_id}' and the facts provided previously in the conversation, and confirm naturally.]"
                 )
             elif consent_action == "CONSENT_REJECTED":
                 consent_inst = (
@@ -222,6 +406,7 @@ class Assistant(Agent, TriageTools, EscalationTools, MemoryTools):
                 )
 
             new_message.content.append(lang_inst + consent_inst)
+
 
 server = AgentServer()
 
@@ -247,11 +432,11 @@ async def my_agent(ctx: JobContext):
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-                voice="Anisha", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            voice="Anisha",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
@@ -289,10 +474,18 @@ async def my_agent(ctx: JobContext):
     participant = await ctx.wait_for_participant()
     caller_id = participant.identity or "unknown_caller"
 
+    db_host, db_port, db_name = db_target_info()
+
     logger.info("==================================================")
-    logger.info("CALLER IDENTITY INITIALIZATION")
-    logger.info(f"ROOM: {ctx.room.name}")
-    logger.info(f"STABLE CALLER ID: {caller_id}")
+    logger.info("CALLER MEMORY DIAGNOSTIC")
+    logger.info(f"session_id={id(session)}")
+    logger.info(f"room={ctx.room.name}")
+    logger.info(f"participant_identity={participant.identity}")
+    logger.info(f"caller_id={caller_id}")
+    logger.info(f"user_id={caller_id}")
+    logger.info(f"db_host={db_host}")
+    logger.info(f"db_port={db_port}")
+    logger.info(f"db_name={db_name}")
     logger.info("==================================================")
 
     # Start the session with the Assistant configured with the persistent caller_id

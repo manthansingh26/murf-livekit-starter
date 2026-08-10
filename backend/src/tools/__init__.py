@@ -1,5 +1,6 @@
 # src/tools/__init__.py
-from .triage import TriageTools
 from .escalation import EscalationTools
+from .health_access import HealthAccessTools
+from .triage import TriageTools
 
-__all__ = ["TriageTools", "EscalationTools"]
+__all__ = ["EscalationTools", "HealthAccessTools", "TriageTools"]
