@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -69,6 +70,17 @@ async def init_db():
 
 async def get_db_pool() -> asyncpg.Pool:
     global db_pool
+    try:
+        cur_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        cur_loop = None
+
+    if db_pool is not None:
+        is_closed = getattr(db_pool, "_closed", False)
+        pool_loop = getattr(db_pool, "_loop", None)
+        if is_closed or (cur_loop and pool_loop is not cur_loop):
+            db_pool = None
+
     if db_pool is None:
         await init_db()
     return db_pool

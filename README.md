@@ -32,6 +32,12 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
     *   **Proactive Privacy & Consent Engine**: Turn completion handler dynamically detects personal info and strictly enforces consent guardrails—never saving data unless the user explicitly grants permission.
     *   **Memory Integration Tests (`backend/tests/test_memory.py` & `backend/src/test_db.py`)**: Verification scripts for database operations, memory persistence, and consent control flow.
 *   **Day 5:** Real Health Facility Lookup Tool added — `find_nearby_health_facilities` queries live public OpenStreetMap data (Nominatim geocoder + Overpass API) to find real nearby hospitals, clinics, PHCs, and pharmacies, with graceful spoken fallbacks when the data source is unavailable.
+*   **Day 6:** Outbound Telephony & Follow-Up Agent added with:
+    *   **Agent-Initiated Outbound Calling (`backend/src/telephony/outbound/dial.py`)**: Uses LiveKit SIP Outbound Trunk (`LIVEKIT_SIP_OUTBOUND_TRUNK_ID`) to dial softphones (e.g. Linphone) or PSTN endpoints.
+    *   **Dedicated Outbound Worker (`backend/src/telephony/outbound/agent.py`)**: Registers `saathi-outbound` agent, introducing itself safely (identity, purpose, explicit opt-out consent).
+    *   **Destination Normalization**: Handles bare usernames, phone numbers (E.164), and full SIP URIs, extracting clean SIP user targets for LiveKit's `sip_call_to`.
+    *   **Multilingual Script & Guardrail Control**: Supports English, Hindi (Devanagari), and Gujarati (Gujarati script) without medical diagnosis or unauthorized recording.
+    *   **Comprehensive Test Suite (`backend/tests/test_outbound.py`)**: Automated verification for destination normalization, safety prompt constraints, agent-name parity, defensive SIP status logging, and env readiness.
 
 
 ---
@@ -58,6 +64,34 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
 > "Saathi, I am in Navsari. Can you find a nearby health facility?"
 
 **Safety:** The tool only locates facilities — it never diagnoses, never prescribes, and never replaces emergency services. Emergency escalation still takes priority.
+
+---
+
+## 📞 Day 6 — Outbound Telephony & Follow-Up Agent
+
+**Components:**
+- `backend/src/telephony/outbound/dial.py`: Dispatcher script that triggers LiveKit agent dispatch to a specified callee.
+- `backend/src/telephony/outbound/agent.py`: Dedicated outbound worker process (`saathi-outbound`) handling the SIP call lifecycle, opening greetings, and interactive dialog.
+- `backend/tests/test_outbound.py`: Comprehensive test suite verifying SIP user normalization, prompt safety, agent name alignment, and defensive failure logging.
+
+**How Outbound Works:**
+1. **Trigger Call**: Execute `uv run python src/telephony/outbound/dial.py --to <username_or_phone>`
+2. **Dispatch Agent**: LiveKit server dispatches the `saathi-outbound` worker into a dedicated room with destination metadata.
+3. **SIP Connection**: The worker creates a SIP participant via the configured LiveKit outbound SIP trunk (`LIVEKIT_SIP_OUTBOUND_TRUNK_ID`).
+4. **Greeting & Opt-Out**: Once the callee answers and joins, Saathi introduces itself, explains why it's calling, and informs the caller they can ask to stop at any time.
+5. **Interactive Navigation**: Supports multilingual interaction in Hindi, Gujarati, and English with script enforcement.
+6. **Graceful Disconnect**: The session automatically terminates when the participant hangs up or requests to stop.
+
+**Running Outbound Calls:**
+```bash
+# Terminal 1: Start outbound worker
+cd backend
+uv run python src/telephony/outbound/agent.py dev
+
+# Terminal 2: Dial Linphone user or phone number
+cd backend
+uv run python src/telephony/outbound/dial.py --to <linphone_user_or_phone>
+```
 
 ---
 
