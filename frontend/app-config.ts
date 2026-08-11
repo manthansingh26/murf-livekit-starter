@@ -48,21 +48,11 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   accentDark: '#2dd4bf', // Teal 400
   startButtonText: 'Speak with Saathi',
 
-  // optional: audio visualization configuration
-  // audioVisualizerType: 'bar',
-  // audioVisualizerColor: '#002cf2',
-  // audioVisualizerColorDark: '#1fd5f9',
-  // audioVisualizerColorShift: 0.3,
-  // audioVisualizerBarCount: 5,
-  // audioVisualizerType: 'radial',
-  // audioVisualizerRadialBarCount: 24,
-  // audioVisualizerRadialRadius: 100,
-  // audioVisualizerType: 'grid',
-  // audioVisualizerGridRowCount: 25,
-  // audioVisualizerGridColumnCount: 25,
-  // audioVisualizerType: 'wave',
-  // audioVisualizerWaveLineWidth: 3,
-  // audioVisualizerType: 'aura',
+  // Audio visualization - Aura (shader-based aurora effect)
+  audioVisualizerType: 'aura',
+  audioVisualizerColor: '#0d9488', // Teal 600
+  audioVisualizerColorDark: '#2dd4bf', // Teal 400
+  audioVisualizerColorShift: 0.3,
 
   // agent dispatch configuration
   agentName: process.env.AGENT_NAME ?? undefined,

@@ -107,9 +107,10 @@ function getStableCallerId(): string {
     if (existing) {
       return existing;
     }
-    const fresh = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? `saathi_${crypto.randomUUID()}`
-      : `saathi_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+    const fresh =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? `saathi_${crypto.randomUUID()}`
+        : `saathi_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
     window.localStorage.setItem(KEY, fresh);
     return fresh;
   } catch {

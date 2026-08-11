@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { AccessToken, type AccessTokenOptions, type VideoGrant } from 'livekit-server-sdk';
 import { RoomConfiguration } from '@livekit/protocol';
@@ -61,14 +61,11 @@ export async function POST(req: Request) {
     // column is VARCHAR(255) and the value becomes the LiveKit participant identity).
     const rawBodyId = typeof body?.caller_id === 'string' ? body.caller_id.trim() : '';
     const bodyIdentity =
-      rawBodyId.length > 0 &&
-      rawBodyId.length <= 100 &&
-      /^[a-zA-Z0-9_-]+$/.test(rawBodyId)
+      rawBodyId.length > 0 && rawBodyId.length <= 100 && /^[a-zA-Z0-9_-]+$/.test(rawBodyId)
         ? rawBodyId
         : '';
 
-    const participantIdentity =
-      bodyIdentity || cookieIdentity || `saathi_${randomUUID()}`;
+    const participantIdentity = bodyIdentity || cookieIdentity || `saathi_${randomUUID()}`;
     const isNewIdentity = !cookieIdentity || cookieIdentity !== participantIdentity;
 
     const participantName = 'user';

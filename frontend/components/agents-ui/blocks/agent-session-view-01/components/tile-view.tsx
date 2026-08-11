@@ -152,8 +152,8 @@ export function TileLayout({
                     isChatOpen={chatOpen}
                     className={cn(
                       'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
-                      'bg-background rounded-[50px] border border-transparent transition-[border,drop-shadow]',
-                      chatOpen && 'border-input shadow-2xl/10 delay-200'
+                      'rounded-full transition-[border,drop-shadow]',
+                      chatOpen && 'border border-teal-200/30 shadow-lg delay-200'
                     )}
                     style={{ color: audioVisualizerColor }}
                   />
