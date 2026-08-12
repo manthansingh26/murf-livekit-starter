@@ -24,6 +24,7 @@ from db import db_target_info, init_db, lookup_caller
 from prompts import SAATHI_SYSTEM_PROMPT
 from tools.escalation import EscalationTools
 from tools.health_access import HealthAccessTools
+from tools.human_escalation import HumanEscalationTools, detect_escalation_trigger
 from tools.memory import MemoryTools
 from tools.triage import TriageTools
 
@@ -316,11 +317,22 @@ def format_returning_caller_instruction(record: dict) -> str:
     )
 
 
-class Assistant(Agent, TriageTools, EscalationTools, MemoryTools, HealthAccessTools):
+class Assistant(
+    Agent,
+    TriageTools,
+    EscalationTools,
+    MemoryTools,
+    HealthAccessTools,
+    HumanEscalationTools,
+):
     def __init__(self, user_id: str = "default_user") -> None:
         super().__init__(instructions=SAATHI_SYSTEM_PROMPT.format(user_id=user_id))
         self.user_id = user_id
         self._memory_injected = False
+        # Day 7: remembers which escalation offer (red_flag_symptom /
+        # diagnosis_request) is pending, so an explicit YES later triggers
+        # create_escalation deterministically (never on a red flag alone).
+        self._pending_escalation_trigger = None
 
     async def _inject_caller_memory(self, new_message: llm.ChatMessage) -> None:
         """Deterministic returning-caller memory lookup, run ONCE on the first user turn.
@@ -405,7 +417,61 @@ class Assistant(Agent, TriageTools, EscalationTools, MemoryTools, HealthAccessTo
                     "Reply politely acknowledging their choice (e.g. 'No problem, I won't save that.').]"
                 )
 
-            new_message.content.append(lang_inst + consent_inst)
+            # ---- DAY 7: HUMAN ESCALATION DETERMINISTIC FLOW ----
+            # Same per-turn injection pattern as the language/consent rules above,
+            # so a red-flag or diagnosis-request turn ALWAYS ends with the
+            # human-help offer + consent question (never stops at the emergency
+            # guidance alone), and an explicit YES always reaches create_escalation.
+            escalation_inst = ""
+            trigger = detect_escalation_trigger(new_message.text_content)
+            if self._pending_escalation_trigger and consent_action == "CONSENT_GRANTED":
+                # The caller just said YES to the human-help offer made earlier.
+                # Checked BEFORE a new trigger so a granted consent is never
+                # overwritten by a re-detected trigger in the same turn.
+                reason = self._pending_escalation_trigger
+                self._pending_escalation_trigger = None
+                escalation_inst = (
+                    "\n\n[DAY 7 CONSENT: The caller just granted explicit permission for the "
+                    "human-help escalation you offered earlier. You MUST call `create_escalation` "
+                    f"NOW with consent_confirmed=True, user_id='{self.user_id}', "
+                    f"reason='{reason}', and the other fields as follows. "
+                    "Provide a SHORT 2-3 sentence summary in what_happened (never the full "
+                    "transcript, never passwords/OTPs/PINs/account numbers), an appropriate "
+                    "urgency, the caller's language, and what you advised in agent_action. "
+                    "Then confirm naturally and quote the reference ID you receive, without "
+                    "promising an immediate callback or a guaranteed response time.]"
+                )
+            elif self._pending_escalation_trigger and consent_action == "CONSENT_REJECTED":
+                # The caller declined the human-help offer — no escalation, no
+                # lingering pending state.
+                self._pending_escalation_trigger = None
+            elif trigger == "red_flag_symptom":
+                self._pending_escalation_trigger = trigger
+                escalation_inst = (
+                    "\n\n[CRITICAL DAY 7 RULE: A red-flag emergency was detected in this turn. "
+                    "Your response MUST include BOTH of these IN THE SAME RESPONSE: "
+                    "(1) the emergency guidance — tell the caller to call 112 or 108 for an "
+                    "ambulance immediately, or go to the nearest hospital right now; "
+                    "(2) IMMEDIATELY AFTER the emergency guidance, offer human help and ask "
+                    "for explicit permission, e.g. 'I can send a short summary of what you "
+                    "told me to a human support person. Would you like me to do that?' "
+                    "Do NOT end your response after the emergency guidance alone. Asking for "
+                    "permission is NOT a symptom follow-up question. "
+                    "Do NOT call create_escalation yet — wait for the caller's explicit YES.]"
+                )
+            elif trigger == "diagnosis_request":
+                self._pending_escalation_trigger = trigger
+                escalation_inst = (
+                    "\n\n[CRITICAL DAY 7 RULE: The caller asked you to diagnose them. "
+                    "You MUST NOT provide a diagnosis. In this SAME response: "
+                    "(1) state that you are not a doctor and cannot diagnose them; "
+                    "(2) offer human assistance and ask for explicit permission, e.g. "
+                    "'I can send a short summary to a human support person who may be able "
+                    "to help. Would you like me to do that?' "
+                    "Do NOT call create_escalation yet — wait for the caller's explicit YES.]"
+                )
+
+            new_message.content.append(lang_inst + consent_inst + escalation_inst)
 
 
 server = AgentServer()
