@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, Clock, Globe, Mic, Phone, Shield } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
-import { Clock, Phone, Mic, ChevronDown, ChevronUp, Shield, Globe } from 'lucide-react';
 import { AgentControlBar } from '@/components/agents-ui/agent-control-bar';
 import { TileLayout } from '@/components/agents-ui/blocks/agent-session-view-01/components/tile-view';
 import { PremiumChatTranscript } from '@/components/agents-ui/premium-chat-transcript';
@@ -83,43 +83,48 @@ export function SaathiSessionView({
 
   // Voice state configuration with proper treatments
   const getVoiceStateConfig = (state: string) => {
-    const configs: Record<string, { 
-      color: string; 
-      label: string; 
-      dotColor: string;
-      description: string;
-    }> = {
-      listening: { 
-        color: 'text-emerald-600', 
-        label: 'Listening', 
+    const configs: Record<
+      string,
+      {
+        color: string;
+        label: string;
+        dotColor: string;
+        description: string;
+      }
+    > = {
+      listening: {
+        color: 'text-emerald-600',
+        label: 'Listening',
         dotColor: 'bg-emerald-500',
-        description: 'Speak naturally in your language'
+        description: 'Speak naturally in your language',
       },
-      thinking: { 
-        color: 'text-amber-600', 
-        label: 'Thinking', 
+      thinking: {
+        color: 'text-amber-600',
+        label: 'Thinking',
         dotColor: 'bg-amber-500',
-        description: 'Analyzing your symptoms...'
+        description: 'Analyzing your symptoms...',
       },
-      speaking: { 
-        color: 'text-teal-600', 
-        label: 'Speaking', 
+      speaking: {
+        color: 'text-teal-600',
+        label: 'Speaking',
         dotColor: 'bg-teal-500',
-        description: 'Saathi is responding...'
+        description: 'Saathi is responding...',
       },
-      connecting: { 
-        color: 'text-slate-500', 
-        label: 'Connecting', 
+      connecting: {
+        color: 'text-slate-500',
+        label: 'Connecting',
         dotColor: 'bg-slate-400',
-        description: 'Setting up secure session...'
+        description: 'Setting up secure session...',
       },
     };
-    return configs[state] || { 
-      color: 'text-slate-400', 
-      label: 'Offline', 
-      dotColor: 'bg-slate-300',
-      description: 'Session ended'
-    };
+    return (
+      configs[state] || {
+        color: 'text-slate-400',
+        label: 'Offline',
+        dotColor: 'bg-slate-300',
+        description: 'Session ended',
+      }
+    );
   };
 
   const currentState = getVoiceStateConfig(agentState);
@@ -146,19 +151,24 @@ export function SaathiSessionView({
         </div>
 
         {/* Voice State Pill - Enhanced */}
-        <div className={cn(
-          'flex items-center gap-2.5 rounded-full border px-4 py-2 transition-all duration-300',
-          agentState === 'listening' && 'border-emerald-200 bg-emerald-50',
-          agentState === 'thinking' && 'border-amber-200 bg-amber-50',
-          agentState === 'speaking' && 'border-teal-200 bg-teal-50',
-          !['listening', 'thinking', 'speaking'].includes(agentState) && 'border-slate-200 bg-slate-50'
-        )}>
-          <span className={cn(
-            'h-2.5 w-2.5 rounded-full transition-colors',
-            currentState.dotColor,
-            agentState === 'listening' && 'animate-pulse'
-          )} />
-          <span className={cn('text-xs font-semibold uppercase tracking-wide', currentState.color)}>
+        <div
+          className={cn(
+            'flex items-center gap-2.5 rounded-full border px-4 py-2 transition-all duration-300',
+            agentState === 'listening' && 'border-emerald-200 bg-emerald-50',
+            agentState === 'thinking' && 'border-amber-200 bg-amber-50',
+            agentState === 'speaking' && 'border-teal-200 bg-teal-50',
+            !['listening', 'thinking', 'speaking'].includes(agentState) &&
+              'border-slate-200 bg-slate-50'
+          )}
+        >
+          <span
+            className={cn(
+              'h-2.5 w-2.5 rounded-full transition-colors',
+              currentState.dotColor,
+              agentState === 'listening' && 'animate-pulse'
+            )}
+          />
+          <span className={cn('text-xs font-semibold tracking-wide uppercase', currentState.color)}>
             {currentState.label}
           </span>
         </div>
@@ -169,7 +179,7 @@ export function SaathiSessionView({
             <Globe className="h-3.5 w-3.5 text-slate-400" />
             <span className="text-[10px] font-medium text-slate-500">EN/HI/GU</span>
           </div>
-          
+
           {/* Session Timer */}
           <div className="flex items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-3 py-1.5 font-mono text-xs font-semibold text-slate-600">
             <Clock className="h-3.5 w-3.5" />
@@ -183,7 +193,8 @@ export function SaathiSessionView({
         <div className="flex items-center justify-center gap-2 text-xs text-rose-600">
           <Phone className="h-3 w-3" />
           <span>
-            For emergencies, call <strong className="font-bold">112</strong> or <strong className="font-bold">108</strong>
+            For emergencies, call <strong className="font-bold">112</strong> or{' '}
+            <strong className="font-bold">108</strong>
           </span>
         </div>
       </div>
@@ -192,13 +203,12 @@ export function SaathiSessionView({
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Voice Visualization Area - Integrated into page */}
         <div className="relative flex flex-1 flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-50 via-white to-slate-50 p-4">
-          
           {/* Voice Orb - Integrated visualization */}
           <div className="relative flex items-center justify-center">
             {/* Subtle decorative rings - NOT a black box */}
             <div className="absolute h-[280px] w-[280px] rounded-full border border-teal-100/60 sm:h-[360px] sm:w-[360px]" />
             <div className="absolute h-[240px] w-[240px] rounded-full border border-teal-100/40 sm:h-[320px] sm:w-[320px]" />
-            
+
             {/* Tile Layout with Audio Visualizer - No black background */}
             <div className="relative z-10">
               <TileLayout

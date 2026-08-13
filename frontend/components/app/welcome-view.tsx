@@ -43,11 +43,11 @@ export const WelcomeView = ({
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   // Hydration-safe: detect reduced motion only after mount
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  
+
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     setPrefersReducedMotion(mediaQuery.matches);
-    
+
     const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
@@ -63,7 +63,7 @@ export const WelcomeView = ({
         <div className="flex items-center gap-3">
           <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-teal-600 text-lg font-bold text-white shadow-md">
             S
-            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-500 border-2 border-white">
+            <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full border-2 border-white bg-emerald-500">
               <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75"></span>
             </span>
           </div>
@@ -103,13 +103,13 @@ export const WelcomeView = ({
 
           {/* Headline */}
           <h1 className="text-4xl leading-[1.1] font-extrabold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            Your health,{' '}
-            <span className="text-teal-600">understood.</span>
+            Your health, <span className="text-teal-600">understood.</span>
           </h1>
 
           {/* Subheadline */}
           <p className="max-w-lg text-lg leading-relaxed text-slate-600">
-            Speak naturally in English, Hindi, or Gujarati. Saathi listens, understands, and guides you to the care you need.
+            Speak naturally in English, Hindi, or Gujarati. Saathi listens, understands, and guides
+            you to the care you need.
           </p>
 
           {/* Error Message */}
@@ -121,7 +121,11 @@ export const WelcomeView = ({
             >
               <span className="mt-0.5 text-red-500">
                 <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
                 </svg>
               </span>
               <p className="text-sm font-medium text-red-800">{micError}</p>
@@ -175,35 +179,51 @@ export const WelcomeView = ({
             {/* Animated Rings */}
             <motion.div
               className="absolute inset-0 rounded-full border-2 border-teal-200/40"
-              animate={prefersReducedMotion ? {} : {
-                scale: [1, 1.1, 1],
-                opacity: [0.3, 0.6, 0.3],
-              }}
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      scale: [1, 1.1, 1],
+                      opacity: [0.3, 0.6, 0.3],
+                    }
+              }
               transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
             />
             <motion.div
               className="absolute inset-4 rounded-full border-2 border-teal-300/30"
-              animate={prefersReducedMotion ? {} : {
-                scale: [1, 1.15, 1],
-                opacity: [0.4, 0.7, 0.4],
-              }}
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      scale: [1, 1.15, 1],
+                      opacity: [0.4, 0.7, 0.4],
+                    }
+              }
               transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut', delay: 0.3 }}
             />
             <motion.div
               className="absolute inset-8 rounded-full border-2 border-teal-400/20"
-              animate={prefersReducedMotion ? {} : {
-                scale: [1, 1.2, 1],
-                opacity: [0.5, 0.8, 0.5],
-              }}
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      scale: [1, 1.2, 1],
+                      opacity: [0.5, 0.8, 0.5],
+                    }
+              }
               transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }}
             />
-            
+
             {/* Central Orb */}
             <motion.div
               className="relative z-10 flex h-48 w-48 items-center justify-center rounded-full bg-gradient-to-br from-teal-400 via-teal-500 to-teal-600 shadow-2xl shadow-teal-500/30 sm:h-64 sm:w-64"
-              animate={prefersReducedMotion ? {} : {
-                scale: [1, 1.05, 1],
-              }}
+              animate={
+                prefersReducedMotion
+                  ? {}
+                  : {
+                      scale: [1, 1.05, 1],
+                    }
+              }
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
             >
               <div className="flex flex-col items-center gap-2 text-white">
@@ -214,7 +234,7 @@ export const WelcomeView = ({
 
             {/* Floating Labels */}
             <motion.div
-              className="absolute -right-4 top-1/4 rounded-full bg-white px-4 py-2 shadow-lg"
+              className="absolute top-1/4 -right-4 rounded-full bg-white px-4 py-2 shadow-lg"
               initial={false}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.8, duration: 0.5 }}
@@ -226,7 +246,7 @@ export const WelcomeView = ({
             </motion.div>
 
             <motion.div
-              className="absolute -left-4 bottom-1/4 rounded-full bg-white px-4 py-2 shadow-lg"
+              className="absolute bottom-1/4 -left-4 rounded-full bg-white px-4 py-2 shadow-lg"
               initial={false}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 1, duration: 0.5 }}
@@ -387,8 +407,9 @@ export const WelcomeView = ({
           <div className="flex items-center justify-center gap-3 text-sm text-rose-700">
             <Phone className="h-4 w-4" />
             <span>
-              In emergencies, call <strong className="font-bold">112</strong> or <strong className="font-bold">108</strong>. 
-              Saathi is an AI triage assistant, not a doctor.
+              In emergencies, call <strong className="font-bold">112</strong> or{' '}
+              <strong className="font-bold">108</strong>. Saathi is an AI triage assistant, not a
+              doctor.
             </span>
           </div>
         </div>
@@ -405,7 +426,8 @@ export const WelcomeView = ({
               <span className="text-sm font-semibold text-slate-700">Saathi Swasthya</span>
             </div>
             <p className="text-xs text-slate-500">
-              &copy; {new Date().getFullYear()} Saathi Swasthya &middot; Built for the Murf AI Voice Agents Challenge
+              &copy; {new Date().getFullYear()} Saathi Swasthya &middot; Built for the Murf AI Voice
+              Agents Challenge
             </p>
           </div>
         </div>

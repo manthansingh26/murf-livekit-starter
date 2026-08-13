@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { CheckCircle, Loader2, Mic, User } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { type AgentState, type ReceivedMessage } from '@livekit/components-react';
-import { Mic, CheckCircle, Loader2, User } from 'lucide-react';
 import { cn } from '@/lib/shadcn/utils';
 
 interface PremiumChatTranscriptProps {
@@ -46,9 +46,9 @@ export function PremiumChatTranscript({
   };
 
   const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
@@ -74,12 +74,8 @@ export function PremiumChatTranscript({
             <Mic className="h-7 w-7 text-slate-300" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-500">
-              Your conversation will appear here
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Speak naturally to begin
-            </p>
+            <p className="text-sm font-medium text-slate-500">Your conversation will appear here</p>
+            <p className="mt-1 text-xs text-slate-400">Speak naturally to begin</p>
           </div>
         </div>
       )}
@@ -96,16 +92,10 @@ export function PremiumChatTranscript({
               initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2 }}
-              className={cn(
-                'flex w-full py-2',
-                isUser ? 'justify-end' : 'justify-start'
-              )}
+              className={cn('flex w-full py-2', isUser ? 'justify-end' : 'justify-start')}
             >
               <div
-                className={cn(
-                  'flex max-w-[85%] gap-2.5',
-                  isUser ? 'flex-row-reverse' : 'flex-row'
-                )}
+                className={cn('flex max-w-[85%] gap-2.5', isUser ? 'flex-row-reverse' : 'flex-row')}
               >
                 {/* Avatar */}
                 {!isUser ? (
@@ -127,10 +117,12 @@ export function PremiumChatTranscript({
                       isUser ? 'justify-end' : 'justify-start'
                     )}
                   >
-                    <span className={cn(
-                      'text-[10px] font-semibold',
-                      isUser ? 'text-slate-400' : 'text-teal-600'
-                    )}>
+                    <span
+                      className={cn(
+                        'text-[10px] font-semibold',
+                        isUser ? 'text-slate-400' : 'text-teal-600'
+                      )}
+                    >
                       {isUser ? 'You' : 'Saathi'}
                     </span>
                     <span className="font-mono text-[9px] text-slate-300">

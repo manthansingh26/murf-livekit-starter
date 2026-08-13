@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
+import { ArrowRight, Mic, Phone, RotateCcw, Shield } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useSessionContext } from '@livekit/components-react';
-import { Mic, Shield, Phone, ArrowRight, RotateCcw } from 'lucide-react';
 import type { AppConfig } from '@/app-config';
 import { SaathiSessionView } from '@/components/app/saathi-session-view';
 import { WelcomeView } from '@/components/app/welcome-view';
@@ -55,11 +55,15 @@ const ConnectingView = () => {
             key={i}
             className="absolute rounded-full border border-teal-200/30"
             initial={{ width: 100, height: 100, opacity: 0 }}
-            animate={shouldReduceMotion ? {} : {
-              width: [100, 600],
-              height: [100, 600],
-              opacity: [0.5, 0],
-            }}
+            animate={
+              shouldReduceMotion
+                ? {}
+                : {
+                    width: [100, 600],
+                    height: [100, 600],
+                    opacity: [0.5, 0],
+                  }
+            }
             transition={{
               duration: 3,
               repeat: Infinity,
@@ -217,7 +221,8 @@ const CallEndedView = ({ onRestart }: { onRestart: () => void }) => {
         <div className="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2">
           <Phone className="h-4 w-4 text-rose-500" />
           <span className="text-xs text-slate-600">
-            For emergencies, call <strong className="font-bold">112</strong> or <strong className="font-bold">108</strong>
+            For emergencies, call <strong className="font-bold">112</strong> or{' '}
+            <strong className="font-bold">108</strong>
           </span>
         </div>
       </motion.div>
