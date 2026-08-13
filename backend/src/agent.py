@@ -20,6 +20,7 @@ from livekit.agents import (
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from analytics import CallAnalyticsTracker
 from db import db_target_info, init_db, lookup_caller
 from prompts import SAATHI_SYSTEM_PROMPT
 from tools.escalation import EscalationTools
@@ -553,6 +554,21 @@ async def my_agent(ctx: JobContext):
     logger.info(f"db_port={db_port}")
     logger.info(f"db_name={db_name}")
     logger.info("==================================================")
+
+    # Day 8 — call analytics (additive). Fail-soft: analytics failures are only
+    # logged and can never delay or break the voice call. Only call metadata is
+    # stored — never transcripts or sensitive content.
+    tracker = CallAnalyticsTracker(
+        call_id=ctx.room.name,
+        user_id=caller_id,
+        channel=(
+            "sip"
+            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+            else "browser"
+        ),
+    )
+    await tracker.record_start()
+    tracker.wire(session)
 
     # Start the session with the Assistant configured with the persistent caller_id
     await session.start(

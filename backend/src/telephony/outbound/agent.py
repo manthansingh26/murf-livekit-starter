@@ -64,6 +64,7 @@ from livekit.plugins.turn_detector.multilingual import (  # noqa: E402
 # Reuse the exact multilingual STT and language detection from the existing
 # browser agent — identical behavior, zero changes to the protected file.
 from agent import MultilingualDeepgramSTT, detect_language  # noqa: E402
+from analytics import CallAnalyticsTracker  # noqa: E402
 
 logger = logging.getLogger("saathi-outbound")
 
@@ -262,6 +263,13 @@ async def saathi_outbound(ctx: JobContext):
         vad=ctx.proc.userdata["vad"],
         preemptive_generation=True,
     )
+
+    # Day 8 — call analytics (additive). Fail-soft: analytics failures are only
+    # logged and can never delay or break the outbound call. No personal data
+    # is ever stored — the outbound privacy contract forbids it.
+    tracker = CallAnalyticsTracker(call_id=ctx.room.name, channel="sip")
+    await tracker.record_start()
+    tracker.wire(session)
 
     # 4. Gracefully end when the callee hangs up.
     def _on_participant_disconnected(

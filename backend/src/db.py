@@ -77,6 +77,30 @@ async def init_db():
                     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
                 );
             """)
+            # Day 8 — call analytics. Stores ONLY minimum metadata so the
+            # dashboard can show real call counts: opaque caller id, channel,
+            # timestamps, duration, and a deterministic outcome. NEVER stores
+            # transcripts, medical details, summaries, or credentials.
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS call_analytics (
+                    id SERIAL PRIMARY KEY,
+                    call_id VARCHAR(64) UNIQUE NOT NULL,
+                    user_id VARCHAR(255),
+                    channel VARCHAR(16) NOT NULL,
+                    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                    ended_at TIMESTAMP WITH TIME ZONE,
+                    duration_seconds INTEGER,
+                    outcome VARCHAR(16),
+                    success_type VARCHAR(16),
+                    failure_reason VARCHAR(32),
+                    escalated_ref VARCHAR(32),
+                    language VARCHAR(16)
+                );
+            """)
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_call_analytics_outcome
+                ON call_analytics (outcome);
+            """)
         host, port, db_name = db_target_info()
         logger.info(
             f"[MEMORY DEBUG] db_host={host} db_port={port} db_name={db_name} connection=OK"
@@ -239,3 +263,145 @@ async def list_open_escalations():
             """
         )
         return [dict(r) for r in records]
+
+
+async def start_call_analytics(
+    call_id: str,
+    user_id: str = "",
+    channel: str = "browser",
+    language: Optional[str] = None,
+) -> bool:
+    """Record the start of a call in the analytics table (Day 8).
+
+    Idempotent per call_id (the room name is unique per call for both the
+    browser and the outbound SIP agents), so a duplicate insert never creates
+    a second row. Fail-soft: returns False and logs instead of raising, so
+    analytics can never break a live voice call.
+
+    channel: 'browser' | 'sip'
+    """
+    pool = await get_db_pool()
+    if not pool:
+        return False
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO call_analytics (call_id, user_id, channel, language)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (call_id) DO NOTHING
+                """,
+                call_id,
+                (user_id or "").strip()[:255] or None,
+                (channel or "browser").strip()[:16],
+                (language or "").strip()[:16] or None,
+            )
+        return True
+    except Exception as e:
+        logger.error(
+            f"[ANALYTICS] start_call_analytics failed call_id={call_id} reason={e}"
+        )
+        return False
+
+
+async def finalize_call_analytics(
+    call_id: str,
+    outcome: str,
+    success_type: Optional[str] = None,
+    failure_reason: Optional[str] = None,
+    escalated_ref: Optional[str] = None,
+    ended_at: Optional[datetime] = None,
+    duration_seconds: Optional[int] = None,
+) -> bool:
+    """Finalize one call's outcome (Day 8).
+
+    Idempotent: only rows whose outcome is still NULL are updated, so a second
+    finalization can never overwrite or double-count a call. Fail-soft like
+    start_call_analytics.
+    """
+    pool = await get_db_pool()
+    if not pool:
+        return False
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE call_analytics
+                SET outcome = $2,
+                    success_type = $3,
+                    failure_reason = $4,
+                    escalated_ref = $5,
+                    ended_at = $6,
+                    duration_seconds = $7
+                WHERE call_id = $1 AND outcome IS NULL
+                """,
+                call_id,
+                (outcome or "").strip()[:16],
+                (success_type or "").strip()[:16] or None,
+                (failure_reason or "").strip()[:32] or None,
+                (escalated_ref or "").strip()[:32] or None,
+                ended_at,
+                duration_seconds,
+            )
+        return True
+    except Exception as e:
+        logger.error(
+            f"[ANALYTICS] finalize_call_analytics failed call_id={call_id} reason={e}"
+        )
+        return False
+
+
+async def get_call_analytics_summary(channel: Optional[str] = None):
+    """Aggregate analytics counts for the dashboard (Day 8).
+
+    Returns a dict {total, successful, failed, success_rate, last_updated}
+    computed from REAL call_analytics rows, or None when the database is
+    unreachable. `total` includes in-flight calls (outcome IS NULL) — they
+    count as calls but are not yet successful or failed.
+    """
+    pool = await get_db_pool()
+    if not pool:
+        return None
+
+    try:
+        async with pool.acquire() as conn:
+            if channel:
+                row = await conn.fetchrow(
+                    """
+                    SELECT COUNT(*) AS total,
+                           COUNT(*) FILTER (WHERE outcome = 'success') AS successful,
+                           COUNT(*) FILTER (WHERE outcome = 'failed') AS failed,
+                           MAX(ended_at) AS last_updated
+                    FROM call_analytics
+                    WHERE channel = $1
+                    """,
+                    (channel or "").strip()[:16],
+                )
+            else:
+                row = await conn.fetchrow(
+                    """
+                    SELECT COUNT(*) AS total,
+                           COUNT(*) FILTER (WHERE outcome = 'success') AS successful,
+                           COUNT(*) FILTER (WHERE outcome = 'failed') AS failed,
+                           MAX(ended_at) AS last_updated
+                    FROM call_analytics
+                    """
+                )
+        if row is None:
+            return None
+        total = row["total"]
+        successful = row["successful"]
+        failed = row["failed"]
+        success_rate = round(100.0 * successful / total, 1) if total else 0.0
+        return {
+            "total": total,
+            "successful": successful,
+            "failed": failed,
+            "success_rate": success_rate,
+            "last_updated": row["last_updated"],
+        }
+    except Exception as e:
+        logger.error(f"[ANALYTICS] get_call_analytics_summary failed reason={e}")
+        return None

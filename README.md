@@ -38,6 +38,17 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
     *   **Destination Normalization**: Handles bare usernames, phone numbers (E.164), and full SIP URIs, extracting clean SIP user targets for LiveKit's `sip_call_to`.
     *   **Multilingual Script & Guardrail Control**: Supports English, Hindi (Devanagari), and Gujarati (Gujarati script) without medical diagnosis or unauthorized recording.
     *   **Comprehensive Test Suite (`backend/tests/test_outbound.py`)**: Automated verification for destination normalization, safety prompt constraints, agent-name parity, defensive SIP status logging, and env readiness.
+*   **Day 7:** Human-Help Escalation Engine added with:
+    *   **Escalation Tool (`create_escalation`)**: Function tool for creating structured support tickets when human intervention is needed.
+    *   **Consent-Gated Persistence**: Verifies explicit caller consent before logging ticket or personal contact info into PostgreSQL `escalations` table.
+    *   **Reference Code Generation**: Assigns unique tracking IDs (e.g. `ESC-20260813-A1B2C`) with urgency level, contact phone number, preferred time, and notes.
+    *   **Urgency Guardrails & Evals**: Urgency classification (`low`, `medium`, `high`, `emergency`) with safety instructions for immediate emergency calls (108/112) on high-risk cases.
+*   **Day 8:** Voice Call Outcome Analytics & Admin Dashboard added with:
+    *   **Deterministic Outcome Tracker (`backend/src/analytics.py`)**: `CallAnalyticsTracker` monitors session events (`function_tools_executed`, `conversation_item_added`, `close`) to evaluate outcomes strictly from application state without probabilistic LLM judgment.
+    *   **Fail-Soft Telemetry**: Exception-guarded async database writes guarantee that analytics failures will never block or delay live voice streams.
+    *   **PostgreSQL Analytics Store (`backend/src/db.py`)**: Logs session metadata, outcome (`success` / `failed`), success type (`guidance` / `escalation`), failure reason (`error`, `no_response`, `no_success_condition`), duration, channel (`browser` / `sip`), and language.
+    *   **Next.js API & Admin Analytics Dashboard (`/dashboard`)**: Full-featured admin page featuring real-time KPI metrics, call volume charts, success rates, language distribution, channel splits, and active escalation records.
+    *   **Comprehensive Test Coverage**: 131 total tests across agent e2e evals, memory persistence, outbound SIP, human escalation, and deterministic analytics logging.
 
 
 ---
@@ -95,6 +106,43 @@ uv run python src/telephony/outbound/dial.py --to <linphone_user_or_phone>
 
 ---
 
+## 🤝 Day 7 — Human-Help Escalation Engine
+
+**Components:**
+- `backend/src/tools/human_escalation.py`: `@function_tool` implementation for `create_escalation`.
+- `backend/src/db.py`: `create_escalation_ticket()` database helper creating records in the `escalations` table.
+- `backend/tests/test_human_escalation.py` & `test_escalation_db.py`: Test suite verifying consent checks, ticket format, and DB persistence.
+
+**How Escalation Works:**
+1. **Trigger**: Caller asks to talk to a human healthcare worker, nurse, or doctor.
+2. **Consent Request**: Saathi explicitly requests caller consent to save their contact details for a callback.
+3. **Ticket Creation**: Upon caller consent, `create_escalation` is called with details (`caller_id`, `caller_name`, `contact_number`, `reason`, `urgency_level`, `preferred_time`).
+4. **Reference Code**: A unique code (e.g. `ESC-20260813-A1B2C`) is generated and spoken back to the caller for tracking.
+5. **Emergency Handling**: If urgency is classified as `emergency` or `high`, Saathi immediately instructs the caller to dial emergency services (108 / 112) in addition to creating the ticket.
+
+---
+
+## 📊 Day 8 — Call Analytics & Admin Dashboard
+
+**Components:**
+- `backend/src/analytics.py`: `CallAnalyticsTracker` session wire and deterministic resolution module.
+- `backend/src/db.py`: PostgreSQL schema definition and functions for `call_analytics` table.
+- `frontend/app/api/analytics/route.ts`: Next.js REST API serving real aggregated call metrics.
+- `frontend/components/app/analytics-dashboard.tsx`: Interactive admin analytics dashboard component.
+- `frontend/app/dashboard/page.tsx`: `/dashboard` route for viewing platform performance.
+- `backend/tests/test_analytics.py`: 18 unit tests validating deterministic outcome logic and fail-soft wrappers.
+
+**Deterministic Success & Failure Criteria:**
+Outcome evaluation relies strictly on application events (never LLM evaluations):
+- **Success (`escalation`)**: Successful execution of `create_escalation` with a valid reference ID.
+- **Success (`guidance`)**: Successful execution of `find_nearby_health_facilities` (returning status "ok"), `analyze_symptoms`, `find_emergency_contact`, or a substantive assistant response (≥ 20 chars) following a user message.
+- **Failure**: Handled session error (`error`), no user interaction (`no_response`), or disconnect prior to satisfying a success condition (`no_success_condition`).
+
+**Accessing the Dashboard:**
+Navigate to `http://localhost:3000/dashboard` or click the **Analytics** button in the header of the web application.
+
+---
+
 ## 🎙️ Voice Architecture
 
 ```mermaid
@@ -102,20 +150,23 @@ graph TD
     User((User Voice)) -->|WebRTC| LiveKit[LiveKit Server]
     LiveKit -->|Audio Stream| STT[Multilingual Deepgram STT]
     STT -->|Transcript| LLM[Gemini 3.5 Flash Lite]
-    LLM -->|Function Calling| Tools[Triage, Escalation & Memory Tools]
-    Tools <--> DB[(PostgreSQL Caller Memory)]
+    LLM -->|Function Calling| Tools[Triage, Escalation, Memory & Facility Tools]
+    Tools <--> DB[(PostgreSQL Database)]
     LLM -->|Text| TTS[Murf Falcon TTS]
     TTS -->|Synthesized Audio| LiveKit
     LiveKit -->|WebRTC| UserEar((User Audio))
+    LiveKit -->|Session Events| Analytics[Call Analytics Tracker]
+    Analytics --> DB
 ```
 
 ## 🛠️ Tech Stack
-*   **Backend:** Python, LiveKit Agents SDK (`livekit-agents ~1.4`)
+*   **Backend:** Python 3.10+, LiveKit Agents SDK (`livekit-agents ~1.4`)
 *   **Speech-to-Text (STT):** Deepgram Nova-3 (Multilingual & dual-stream Gujarati/Hindi script matching)
 *   **Intelligence (LLM):** Google Gemini 3.5 Flash Lite
 *   **Text-to-Speech (TTS):** Murf Falcon API (Locale: en-IN, Voice: Anisha, Style: Conversation)
-*   **Database & Memory:** PostgreSQL + `asyncpg` (Async persistent caller profile database)
-*   **Frontend:** Next.js, React, Tailwind CSS, LiveKit Agents UI Components
+*   **Database & Analytics:** PostgreSQL + `asyncpg` (Backend), `pg` connection pool (Frontend API)
+*   **Frontend & Dashboard:** Next.js 15, React 19, Tailwind CSS, Lucide React, LiveKit Agents UI
+*   **Testing:** Pytest (131 automated unit, DB & LLM-as-a-judge tests), ESLint
 
 ---
 
@@ -125,6 +176,7 @@ Medical AI carries immense responsibility. We have implemented a multi-layered s
 2.  **Urgency Detection:** The agent actively monitors for keywords (e.g., "chest pain", "unconscious") to immediately escalate to emergency services (108 / 112).
 3.  **LLM-as-Judge Evals:** Our test suite uses automated LLM evaluation to prove the agent refuses harmful medical requests and diagnoses.
 4.  **Proactive Privacy & Consent:** Personal health and demographic details are saved ONLY when explicit user consent is given, respecting caller privacy.
+5.  **LLM-Free Analytics:** Call outcomes are evaluated deterministically from runtime tool and message events—never using LLMs to grade metrics or store sensitive user conversations.
 
 ---
 
@@ -133,12 +185,13 @@ Medical AI carries immense responsibility. We have implemented a multi-layered s
 ### Prerequisites
 - Python 3.10+ and `uv` package manager
 - Node.js and `pnpm`
+- PostgreSQL database (`DATABASE_URL` env var)
 - API Keys: LiveKit, Murf, Deepgram, Google Gemini
 
 ### 1. Start the Backend
 ```bash
 cd backend
-cp .env.example .env.local # Fill in your API keys
+cp .env.example .env.local # Fill in your API keys & DATABASE_URL
 uv sync
 uv run python src/agent.py dev
 ```
@@ -151,9 +204,21 @@ pnpm install
 pnpm dev
 ```
 
+### 3. Run Tests
+```bash
+# Run backend test suite (131 tests)
+cd backend
+uv run pytest
+
+# Run frontend linters
+cd frontend
+pnpm lint
+```
+
 ---
 
 ## 🔮 Future Roadmap
 *   **Phase 2:** Integrate with verified open health databases for accurate symptom mapping.
 *   **Phase 3:** SMS integration to send the user a summary of the call and local clinic addresses.
 *   **Phase 4:** Support for 10+ regional Indian languages.
+
