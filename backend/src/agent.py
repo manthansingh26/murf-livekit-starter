@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,9 +11,12 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    ChatContext,
     JobContext,
     JobProcess,
+    RunContext,
     cli,
+    function_tool,
     llm,
     room_io,
     tokenize,
@@ -22,7 +26,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from analytics import CallAnalyticsTracker
 from db import db_target_info, init_db, lookup_caller
-from prompts import SAATHI_SYSTEM_PROMPT
+from prompts import CLINIC_SPECIALIST_PROMPT, SAATHI_SYSTEM_PROMPT
 from tools.escalation import EscalationTools
 from tools.health_access import HealthAccessTools
 from tools.human_escalation import HumanEscalationTools, detect_escalation_trigger
@@ -46,6 +50,7 @@ class MultilingualDeepgramStream(stt.RecognizeStream):
         super().__init__(stt=stt_instance, conn_options=conn_options)
         self._stream_multi = stream_multi
         self._stream_gu = stream_gu
+        self._last_multi_valid_time = 0.0
 
     def push_frame(self, frame: rtc.AudioFrame) -> None:
         super().push_frame(frame)
@@ -111,13 +116,16 @@ class MultilingualDeepgramStream(stt.RecognizeStream):
                     has_hindi_marker = any(w in text_multi for w in hindi_markers)
 
                     # English or Hindi from multi stream always takes priority over phonetic gujarati transliteration
-                    if (
+                    is_valid_english_or_hindi = (
                         latin_words > 0
                         and (
                             latin_words >= total_words * 0.4
                             or latin_chars > hindi_chars
                         )
-                    ) or (hindi_chars > 0 and has_hindi_marker):
+                    ) or (hindi_chars > 0 and has_hindi_marker)
+
+                    if is_valid_english_or_hindi:
+                        self._last_multi_valid_time = time.time()
                         self._event_ch.send_nowait(ev)
                 else:
                     self._event_ch.send_nowait(ev)
@@ -131,7 +139,11 @@ class MultilingualDeepgramStream(stt.RecognizeStream):
                         else ""
                     )
                     gujarati_chars = len(re.findall(r"[\u0A80-\u0AFF]", text_gu))
-                    if gujarati_chars > 0:
+                    # Only forward Gujarati stream transcript if multi stream did not emit a valid English/Hindi transcript recently
+                    if (
+                        gujarati_chars > 0
+                        and time.time() - self._last_multi_valid_time > 2.0
+                    ):
                         self._event_ch.send_nowait(ev)
 
         await asyncio.gather(run_multi(), run_gu())
@@ -187,6 +199,60 @@ def detect_language(text: str) -> str:
         return "Hindi"
     else:
         return "English"
+
+
+def language_instruction(detected: str) -> str:
+    """Build the per-turn [SYSTEM INSTRUCTION] language block for a detected language.
+
+    Returns the exact same string the main agent has always appended to user
+    turns, extracted into a shared helper so the Day 9 specialist enforces
+    identical script behavior (English -> Latin, Hindi -> Devanagari,
+    Gujarati -> Gujarati script; never romanized).
+    """
+    if detected == "Gujarati":
+        return "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as GUJARATI. You MUST respond in natural Gujarati using the Gujarati script. Do NOT respond in Hindi or Romanized Gujarati. Preserve English medical terms natively.]"
+    elif detected == "Hindi":
+        return "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as HINDI. You MUST respond in natural Hindi using the Devanagari script. Do NOT respond in Gujarati or Romanized Hindi. Preserve English medical terms natively.]"
+    else:
+        return "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as ENGLISH. You MUST respond in natural English using the Latin script. Do NOT respond in Hindi or Gujarati.]"
+
+
+def language_continuity(current: str, text: str) -> str:
+    """Resolve the language for a turn, preserving the established conversation
+    language unless the caller unambiguously switches.
+
+    `detect_language` is unchanged; this adds a continuity layer so a Gujarati
+    (or Hindi/English) conversation is not yanked to another language by a short
+    or mixed-script turn — e.g. Gujarati speech with English medical terms, which
+    `detect_language` can misclassify as English because it counts Latin *words*
+    against non-Latin *characters*. Only a turn clearly dominated by a different
+    script counts as an explicit switch.
+    """
+    detected = detect_language(text)
+    if detected == current:
+        return current
+
+    gujarati_chars = len(re.findall(r"[\u0A80-\u0AFF]", text))
+    hindi_chars = len(re.findall(r"[\u0900-\u097F]", text))
+    latin_words = len(re.findall(r"\b[a-zA-Z]+\b", text))
+    total_words = len(text.split()) or 1
+
+    if detected == "Gujarati" and gujarati_chars >= 2 and gujarati_chars > hindi_chars:
+        return "Gujarati"
+    if detected == "Hindi" and hindi_chars >= 2 and hindi_chars > gujarati_chars:
+        return "Hindi"
+    if detected == "English" and latin_words >= 2 and latin_words >= total_words * 0.5:
+        return "English"
+    # Ambiguous or mixed-script turn — stay with the established language.
+    return current
+
+
+# Handoff announcements spoken by the main agent, in the caller's language.
+HANDOFF_ANNOUNCEMENTS = {
+    "English": "I'll connect you with our clinic and appointment specialist.",
+    "Hindi": "मैं आपको हमारे क्लिनिक और अपॉइंटमेंट विशेषज्ञ से जोड़ता हूँ।",
+    "Gujarati": "હું તમને અમારા ક્લિનિક અને એપોઇન્ટમેન્ટ નિષ્ણાત સાથે જોડું છું.",
+}
 
 
 def analyze_consent_turn(text: str) -> str:
@@ -334,6 +400,9 @@ class Assistant(
         # diagnosis_request) is pending, so an explicit YES later triggers
         # create_escalation deterministically (never on a red flag alone).
         self._pending_escalation_trigger = None
+        # Day 9: language of the most recent user turn, used by the handoff
+        # tool to announce and build the specialist in the caller's language.
+        self._last_detected_language = "English"
 
     async def _inject_caller_memory(self, new_message: llm.ChatMessage) -> None:
         """Deterministic returning-caller memory lookup, run ONCE on the first user turn.
@@ -386,12 +455,16 @@ class Assistant(
             logger.info(f"Consent Action: {consent_action}")
             logger.info("----------------------------------------")
 
-            if detected == "Gujarati":
-                lang_inst = "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as GUJARATI. You MUST respond in natural Gujarati using the Gujarati script. Do NOT respond in Hindi or Romanized Gujarati. Preserve English medical terms natively.]"
-            elif detected == "Hindi":
-                lang_inst = "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as HINDI. You MUST respond in natural Hindi using the Devanagari script. Do NOT respond in Gujarati or Romanized Hindi. Preserve English medical terms natively.]"
-            else:
-                lang_inst = "\n\n[SYSTEM INSTRUCTION: The user's current utterance is classified as ENGLISH. You MUST respond in natural English using the Latin script. Do NOT respond in Hindi or Gujarati.]"
+            # Day 9 polish: preserve the established conversation language unless
+            # the caller unambiguously switches scripts. detect_language() itself
+            # is unchanged — this continuity layer prevents a Gujarati (or
+            # Hindi/English) conversation from flipping to another language on a
+            # short or mixed-script turn (e.g. Gujarati with English medical
+            # terms). An explicit, script-dominant switch is still honored.
+            self._last_detected_language = language_continuity(
+                self._last_detected_language, new_message.text_content
+            )
+            lang_inst = language_instruction(self._last_detected_language)
 
             consent_inst = ""
             if consent_action == "PROACTIVE_CONSENT_REQUIRED":
@@ -442,7 +515,10 @@ class Assistant(
                     "Then confirm naturally and quote the reference ID you receive, without "
                     "promising an immediate callback or a guaranteed response time.]"
                 )
-            elif self._pending_escalation_trigger and consent_action == "CONSENT_REJECTED":
+            elif (
+                self._pending_escalation_trigger
+                and consent_action == "CONSENT_REJECTED"
+            ):
                 # The caller declined the human-help offer — no escalation, no
                 # lingering pending state.
                 self._pending_escalation_trigger = None
@@ -473,6 +549,99 @@ class Assistant(
                 )
 
             new_message.content.append(lang_inst + consent_inst + escalation_inst)
+
+    @function_tool
+    async def transfer_to_clinic_specialist(
+        self, context: RunContext
+    ) -> tuple[Agent, str] | str:
+        """Transfer the caller to the Clinic & Appointment Specialist for healthcare facility or appointment help.
+
+        USE THIS TOOL ONLY when the caller needs to find or locate a healthcare
+        facility (clinic, hospital, health centre, PHC, pharmacy, doctor), needs
+        clinic/hospital/facility information, appointment assistance (booking,
+        scheduling, hours, availability), or navigation to the right facility.
+
+        DO NOT use this tool for symptom questions (headache, fever, pain),
+        diagnosis requests, medication questions, general health education,
+        casual conversation, or emergencies — handle those yourself as Saathi.
+        """
+        language = self._last_detected_language
+        try:
+            specialist = ClinicAppointmentSpecialist(
+                language=language,
+                chat_ctx=self.chat_ctx.copy(exclude_instructions=True),
+            )
+        except Exception as e:
+            logger.error(f"[HANDOFF] failed to create clinic specialist: {e}")
+            return (
+                "The clinic and appointment specialist is temporarily unavailable. "
+                "Continue helping the caller yourself with general health guidance "
+                "and suggest trying again shortly."
+            )
+        announcement = HANDOFF_ANNOUNCEMENTS.get(
+            language, HANDOFF_ANNOUNCEMENTS["English"]
+        )
+        return specialist, announcement
+
+
+class ClinicAppointmentSpecialist(Agent, HealthAccessTools):
+    """Day 9 — narrow clinic & appointment / healthcare facility specialist.
+
+    Receives the caller's language and the prior conversation via `chat_ctx`, so
+    the caller never repeats their request. Inherits only the health-facility
+    lookup tool; it is deliberately NOT a general health assistant.
+    """
+
+    def __init__(
+        self,
+        *,
+        language: str = "English",
+        chat_ctx: ChatContext | None = None,
+    ) -> None:
+        super().__init__(
+            instructions=CLINIC_SPECIALIST_PROMPT,
+            chat_ctx=chat_ctx,
+        )
+        self.language = language
+
+    async def on_enter(self) -> None:
+        script_hint = {
+            "Hindi": (
+                "Respond entirely in natural Hindi using the Devanagari script. "
+                "Never romanize. Preserve English medical terms natively."
+            ),
+            "Gujarati": (
+                "Respond entirely in natural Gujarati using the Gujarati script. "
+                "Never romanize. Preserve English medical terms natively."
+            ),
+            "English": "Respond in natural English.",
+        }.get(self.language, "Respond in natural English.")
+        await self.session.generate_reply(
+            tool_choice="none",
+            instructions=(
+                "Your very first reply MUST introduce yourself and nothing else: "
+                "introduce yourself as Saathi's clinic and appointment specialist, "
+                "say you can help with clinic and healthcare facility information, "
+                "and say you already have the context of their request. "
+                "Keep the introduction to ONE or TWO short spoken sentences. "
+                "Do NOT use the caller's name or any nickname (such as 'King') unless "
+                "their name is explicitly present in the conversation — use a neutral "
+                "professional greeting instead. "
+                "If the conversation already mentions where the caller is or what they "
+                "need, reference it so they do NOT have to repeat it. "
+                f"Do NOT call any tools and do NOT ask for the location or any other "
+                f"question in this first reply. {script_hint}"
+            ),
+        )
+
+    async def on_user_turn_completed(
+        self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
+    ) -> None:
+        if new_message and new_message.text_content:
+            # Preserve the established conversation language unless the caller
+            # unambiguously switches scripts (detect_language() is unchanged).
+            self.language = language_continuity(self.language, new_message.text_content)
+            new_message.content.append(language_instruction(self.language))
 
 
 server = AgentServer()

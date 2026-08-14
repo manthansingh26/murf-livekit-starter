@@ -48,6 +48,10 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
     *   **Fail-Soft Telemetry**: Exception-guarded async database writes guarantee that analytics failures will never block or delay live voice streams.
     *   **PostgreSQL Analytics Store (`backend/src/db.py`)**: Logs session metadata, outcome (`success` / `failed`), success type (`guidance` / `escalation`), failure reason (`error`, `no_response`, `no_success_condition`), duration, channel (`browser` / `sip`), and language.
     *   **Next.js API & Admin Analytics Dashboard (`/dashboard`)**: Full-featured admin page featuring real-time KPI metrics, call volume charts, success rates, language distribution, channel splits, and active escalation records.
+*   **Day 9:** Clinic & Appointment Specialist Agent (Multi-Agent Handoff) added with:
+    *   **Dedicated Specialist (`backend/src/prompts/clinic_specialist.py`)**: A focused sub-agent (`ClinicAppointmentSpecialist`) that handles only healthcare facility (hospitals, clinics, pharmacies) and appointment assistance.
+    *   **Agent Handoff (`backend/src/agent.py`)**: Main Saathi agent uses the `transfer_to_clinic_specialist` tool to seamlessly transfer the caller when they need facility or appointment help, preserving the conversation context.
+    *   **Language Continuity**: Advanced language tracking prevents the agent from flipping languages on short or mixed-script turns, ensuring a consistent multilingual experience across handoffs.
     *   **Comprehensive Test Coverage**: 131 total tests across agent e2e evals, memory persistence, outbound SIP, human escalation, and deterministic analytics logging.
 
 
@@ -140,6 +144,22 @@ Outcome evaluation relies strictly on application events (never LLM evaluations)
 
 **Accessing the Dashboard:**
 Navigate to `http://localhost:3000/dashboard` or click the **Analytics** button in the header of the web application.
+
+---
+
+## 🏥 Day 9 — Clinic & Appointment Specialist (Multi-Agent)
+
+**Components:**
+- `backend/src/prompts/clinic_specialist.py`: The specialized system prompt for the `ClinicAppointmentSpecialist` agent.
+- `backend/src/agent.py`: Implementation of `transfer_to_clinic_specialist` handoff tool and the specialist agent class.
+- `backend/src/prompts/saathi_system.py`: Updated main agent prompt to instruct when to hand off.
+
+**How the Specialist Works:**
+1. **Trigger**: Caller asks for help finding a hospital, clinic, pharmacy, or needs help with appointments, hours, or facility navigation.
+2. **Handoff**: The main Saathi agent calls the `transfer_to_clinic_specialist` tool. LiveKit gracefully pauses the main agent, announces the transfer in the caller's established language (e.g., "I'm connecting you to our clinic and appointment specialist."), and wakes up the specialist agent.
+3. **Context Preservation**: The new agent receives the full `chat_ctx` from the main agent, so it already knows the caller's location and request. The caller never has to repeat themselves.
+4. **Specialized Assistance**: The new agent is explicitly instructed *not* to act as a general health assistant (no symptom analysis). It strictly helps with facility lookup (via the `find_nearby_health_facilities` tool) and appointment guidance.
+5. **Language Continuity**: The handoff system tracks the `_last_detected_language` to ensure the new agent starts speaking in the exact same language (Hindi, Gujarati, English) that the caller was already using.
 
 ---
 
