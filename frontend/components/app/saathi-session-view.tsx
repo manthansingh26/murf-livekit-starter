@@ -50,7 +50,7 @@ export function SaathiSessionView({
   const { messages } = useSessionMessages(session);
   const { state: agentState } = useAgent();
   const [callDuration, setCallDuration] = useState(0);
-  const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
 
   // Call Timer logic
   useEffect(() => {
@@ -311,14 +311,21 @@ export function SaathiSessionView({
 
         {/* Control Bar - Premium pill design */}
         <div className="flex shrink-0 items-center justify-center border-t border-slate-100 bg-white px-4 py-3">
-          <div className="rounded-full border border-slate-200/80 bg-slate-50 px-3 py-2.5 shadow-sm">
+          <div
+            className={cn(
+              'border border-slate-200/80 shadow-sm transition-all duration-300',
+              transcriptOpen
+                ? 'w-full max-w-[580px] rounded-2xl bg-white px-3 py-2.5'
+                : 'rounded-full bg-slate-50 px-3 py-2.5'
+            )}
+          >
             <AgentControlBar
               variant="livekit"
               controls={controls}
-              isChatOpen={false}
+              isChatOpen={transcriptOpen}
               isConnected={session.isConnected}
               onDisconnect={session.end}
-              onIsChatOpenChange={() => {}}
+              onIsChatOpenChange={setTranscriptOpen}
             />
           </div>
         </div>

@@ -102,8 +102,8 @@ function AgentChatInput({ chatOpen, onSend = async () => {}, className }: AgentC
   };
 
   useEffect(() => {
-    if (chatOpen) return;
-    // when not disabled refocus on input
+    if (!chatOpen) return;
+    // when chat opens, focus the input
     inputRef.current?.focus();
   }, [chatOpen]);
 
@@ -117,7 +117,7 @@ function AgentChatInput({ chatOpen, onSend = async () => {}, className }: AgentC
         placeholder="Type something..."
         onKeyDown={handleKeyDown}
         onChange={(e) => setMessage(e.target.value)}
-        className="field-sizing-content max-h-16 min-h-8 flex-1 resize-none py-2 [scrollbar-width:thin] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="field-sizing-content max-h-16 min-h-8 flex-1 resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-800 placeholder:text-slate-400 [scrollbar-width:thin] focus:border-teal-500 focus:ring-1 focus:ring-teal-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
       />
       <Button
         size="icon"
@@ -126,7 +126,7 @@ function AgentChatInput({ chatOpen, onSend = async () => {}, className }: AgentC
         variant={isDisabled ? 'secondary' : 'default'}
         title={isSending ? 'Sending...' : 'Send'}
         onClick={handleButtonClick}
-        className="self-end disabled:cursor-not-allowed"
+        className={cn('self-end disabled:cursor-not-allowed', !isDisabled && 'bg-teal-600 text-white hover:bg-teal-700')}
       >
         {isSending ? <Loader className="animate-spin" /> : <SendHorizontal />}
       </Button>
@@ -288,7 +288,7 @@ export function AgentControlBar({
     <div
       aria-label="Voice assistant controls"
       className={cn(
-        'bg-background border-input/50 dark:border-muted flex flex-col border p-3 drop-shadow-md/3',
+        'flex flex-col border bg-white border-slate-200 p-3',
         variant === 'livekit' ? 'rounded-[31px]' : 'rounded-lg',
         className
       )}
@@ -298,7 +298,7 @@ export function AgentControlBar({
         {...MOTION_PROPS}
         inert={!(isChatOpen || isChatOpenUncontrolled)}
         animate={isChatOpen || isChatOpenUncontrolled ? 'visible' : 'hidden'}
-        className="border-input/50 flex w-full items-start overflow-hidden border-b"
+        className="flex w-full items-start overflow-hidden border-b border-slate-200"
       >
         <AgentChatInput
           chatOpen={isChatOpen || isChatOpenUncontrolled}
