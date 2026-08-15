@@ -40,19 +40,19 @@ Saathi Swasthya uses state-of-the-art voice AI to provide a deeply empathetic, v
     *   **Comprehensive Test Suite (`backend/tests/test_outbound.py`)**: Automated verification for destination normalization, safety prompt constraints, agent-name parity, defensive SIP status logging, and env readiness.
 *   **Day 7:** Human-Help Escalation Engine added with:
     *   **Escalation Tool (`create_escalation`)**: Function tool for creating structured support tickets when human intervention is needed.
-    *   **Consent-Gated Persistence**: Verifies explicit caller consent before logging ticket or personal contact info into PostgreSQL `escalations` table.
-    *   **Reference Code Generation**: Assigns unique tracking IDs (e.g. `ESC-20260813-A1B2C`) with urgency level, contact phone number, preferred time, and notes.
+    *   **Consent-Gated Persistence**: The tool fails closed — `consent_confirmed is not True` means no database call and no row, whatever the caller said. Records land in the PostgreSQL `escalation_requests` table.
+    *   **Reference Code Generation**: Assigns unique tracking IDs of the form `ESC-XXXXXXXX` (eight uppercase hex characters from `secrets.token_hex(4)`, e.g. `ESC-9F3A2B7C`) and stores a short `what_happened` summary, the agent's action, urgency, language, and an optional preferred follow-up window. Contact numbers, transcripts, OTPs and PINs are never stored.
     *   **Urgency Guardrails & Evals**: Urgency classification (`low`, `medium`, `high`, `emergency`) with safety instructions for immediate emergency calls (108/112) on high-risk cases.
 *   **Day 8:** Voice Call Outcome Analytics & Admin Dashboard added with:
     *   **Deterministic Outcome Tracker (`backend/src/analytics.py`)**: `CallAnalyticsTracker` monitors session events (`function_tools_executed`, `conversation_item_added`, `close`) to evaluate outcomes strictly from application state without probabilistic LLM judgment.
     *   **Fail-Soft Telemetry**: Exception-guarded async database writes guarantee that analytics failures will never block or delay live voice streams.
     *   **PostgreSQL Analytics Store (`backend/src/db.py`)**: Logs session metadata, outcome (`success` / `failed`), success type (`guidance` / `escalation`), failure reason (`error`, `no_response`, `no_success_condition`), duration, channel (`browser` / `sip`), and language.
-    *   **Next.js API & Admin Analytics Dashboard (`/dashboard`)**: Full-featured admin page featuring real-time KPI metrics, call volume charts, success rates, language distribution, channel splits, and active escalation records.
+    *   **Next.js API & Admin Analytics Dashboard (`/dashboard`)**: Reads real rows from PostgreSQL through `frontend/app/api/analytics/route.ts` and renders four KPI cards (total calls, successful, failed, success rate), a success-rate bar, and the 8 most recent calls with start time, channel, duration and outcome. Polls every 8 seconds, contains no mock or hardcoded numbers, and returns a clear `analytics_unavailable` state when the database is unreachable.
 *   **Day 9:** Clinic & Appointment Specialist Agent (Multi-Agent Handoff) added with:
     *   **Dedicated Specialist (`backend/src/prompts/clinic_specialist.py`)**: A focused sub-agent (`ClinicAppointmentSpecialist`) that handles only healthcare facility (hospitals, clinics, pharmacies) and appointment assistance.
     *   **Agent Handoff (`backend/src/agent.py`)**: Main Saathi agent uses the `transfer_to_clinic_specialist` tool to seamlessly transfer the caller when they need facility or appointment help, preserving the conversation context.
     *   **Language Continuity**: Advanced language tracking prevents the agent from flipping languages on short or mixed-script turns, ensuring a consistent multilingual experience across handoffs.
-    *   **Comprehensive Test Coverage**: 131 total tests across agent e2e evals, memory persistence, outbound SIP, human escalation, and deterministic analytics logging.
+    *   **Test Coverage**: 145 collected tests across agent e2e evals, multilingual language handling, memory persistence, outbound SIP, human escalation, and deterministic analytics. Latest full local run (2026-08-14): **135 passed, 3 skipped, 7 failed**. The 3 skips are the opt-in live-network OpenStreetMap tests (`RUN_LIVE_TESTS=1`). Of the 7 failures, 4 were Gemini free-tier rate limits (15 requests/minute on `gemini-3.5-flash-lite`), 2 were LLM-judge evals in `test_multilingual.py`, and 1 was LLM-judge variance that passes on its own. See **Testing & Known Limitations** below.
 
 
 ---
@@ -114,14 +114,14 @@ uv run python src/telephony/outbound/dial.py --to <linphone_user_or_phone>
 
 **Components:**
 - `backend/src/tools/human_escalation.py`: `@function_tool` implementation for `create_escalation`.
-- `backend/src/db.py`: `create_escalation_ticket()` database helper creating records in the `escalations` table.
+- `backend/src/db.py`: `create_escalation_ticket()` database helper creating records in the `escalation_requests` table.
 - `backend/tests/test_human_escalation.py` & `test_escalation_db.py`: Test suite verifying consent checks, ticket format, and DB persistence.
 
 **How Escalation Works:**
 1. **Trigger**: Caller asks to talk to a human healthcare worker, nurse, or doctor.
 2. **Consent Request**: Saathi explicitly requests caller consent to save their contact details for a callback.
-3. **Ticket Creation**: Upon caller consent, `create_escalation` is called with details (`caller_id`, `caller_name`, `contact_number`, `reason`, `urgency_level`, `preferred_time`).
-4. **Reference Code**: A unique code (e.g. `ESC-20260813-A1B2C`) is generated and spoken back to the caller for tracking.
+3. **Ticket Creation**: Only after an explicit caller "yes", `create_escalation` is called with (`user_id`, `reason`, `what_happened`, `agent_action`, `urgency`, `language`, `preferred_follow_up`, `consent_confirmed=True`).
+4. **Reference Code**: A unique code of the form `ESC-XXXXXXXX` (e.g. `ESC-9F3A2B7C`) is generated and spoken back to the caller for tracking.
 5. **Emergency Handling**: If urgency is classified as `emergency` or `high`, Saathi immediately instructs the caller to dial emergency services (108 / 112) in addition to creating the ticket.
 
 ---
@@ -134,7 +134,7 @@ uv run python src/telephony/outbound/dial.py --to <linphone_user_or_phone>
 - `frontend/app/api/analytics/route.ts`: Next.js REST API serving real aggregated call metrics.
 - `frontend/components/app/analytics-dashboard.tsx`: Interactive admin analytics dashboard component.
 - `frontend/app/dashboard/page.tsx`: `/dashboard` route for viewing platform performance.
-- `backend/tests/test_analytics.py`: 18 unit tests validating deterministic outcome logic and fail-soft wrappers.
+- `backend/tests/test_analytics.py`: 37 tests validating deterministic outcome logic and fail-soft wrappers.
 
 **Deterministic Success & Failure Criteria:**
 Outcome evaluation relies strictly on application events (never LLM evaluations):
@@ -183,10 +183,10 @@ graph TD
 *   **Backend:** Python 3.10+, LiveKit Agents SDK (`livekit-agents ~1.4`)
 *   **Speech-to-Text (STT):** Deepgram Nova-3 (Multilingual & dual-stream Gujarati/Hindi script matching)
 *   **Intelligence (LLM):** Google Gemini 3.5 Flash Lite
-*   **Text-to-Speech (TTS):** Murf Falcon API (Locale: en-IN, Voice: Anisha, Style: Conversation)
+*   **Text-to-Speech (TTS):** Murf Falcon API (Voice: Anisha, Style: Conversation, sentence-level streaming with text pacing)
 *   **Database & Analytics:** PostgreSQL + `asyncpg` (Backend), `pg` connection pool (Frontend API)
 *   **Frontend & Dashboard:** Next.js 15, React 19, Tailwind CSS, Lucide React, LiveKit Agents UI
-*   **Testing:** Pytest (131 automated unit, DB & LLM-as-a-judge tests), ESLint
+*   **Testing:** Pytest (145 collected unit, DB & LLM-as-a-judge tests), Ruff, ESLint
 
 ---
 
@@ -226,14 +226,36 @@ pnpm dev
 
 ### 3. Run Tests
 ```bash
-# Run backend test suite (131 tests)
+# Run the backend test suite (145 collected tests)
 cd backend
-uv run pytest
+uv run pytest -q
+
+# Lint & format check
+uv run ruff check .
+uv run ruff format --check .
+
+# Opt in to the live-network OpenStreetMap tests (3 tests, skipped by default)
+RUN_LIVE_TESTS=1 uv run pytest tests/test_health_access_live.py -v
 
 # Run frontend linters
 cd frontend
 pnpm lint
 ```
+
+---
+
+## 🧪 Testing & Known Limitations
+
+**Latest full local run (2026-08-14): 145 collected — 135 passed, 3 skipped, 7 failed.**
+
+The suite mixes three kinds of tests: pure unit tests (no network), database tests that need a reachable `DATABASE_URL`, and LLM-as-a-judge evals that need live model credentials. Those last two categories make the suite environment-dependent, and that is the honest state of it:
+
+*   **Rate limits, not defects.** 4 of the 7 failures (`test_1_gujarati`, `test_3_english`, `test_4_english_to_gujarati`, `test_10_rapid_switching`) hit the Gemini free-tier quota — `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`, 15 requests/minute on `gemini-3.5-flash-lite`. After LiveKit exhausts its retries the generation dies, so the assertion surfaces as the misleading `Expected another event, but none left`. Running `tests/test_multilingual.py` on its own, or on a paid tier, is the workaround.
+*   **LLM-judge variance.** `test_agent.py::test_handoff_failure_does_not_crash` failed in the full run and passes on its own. Its structural assertion (no handoff occurs when specialist construction is forced to fail) passed both times; only the judge's opinion of the wording differed.
+*   **An eval-harness gap worth knowing about.** `AgentSession.run(user_input=...)` calls `generate_reply()` directly, so `Agent.on_user_turn_completed` — which is only invoked on the audio/STT path — never fires during these tests. That means the per-turn injection layer (language instruction, language continuity, consent rules, escalation rules, caller memory) is **not** exercised by `test_multilingual.py`; those tests measure how well the model mirrors language from the system prompt alone. This explains the two remaining failures: `test_5_gujarati_to_english` never receives the English instruction the live agent would inject, and `test_8_code_mixed_gujarati` asks the judge for code-mixed English words while `saathi_system.py` mandates replying in the caller's own script. The continuity layer itself is covered by pure unit tests in `test_agent.py`, which pass.
+*   **CI is partial.** `.github/workflows/tests.yml` supplies the LiveKit secrets only, so the Gemini-backed evals cannot pass there as written.
+
+**Not implemented (stated plainly so nothing is oversold):** Saathi does **not** book appointments. The Clinic & Appointment Specialist explains what to bring, what to ask, and how booking generally works, and is explicitly instructed to admit it cannot see real availability and to tell the caller to contact the facility directly. There is no booking API, and the `/dashboard` and `/api/analytics` routes currently have no authentication — run them locally or put your own auth in front of them before exposing them.
 
 ---
 

@@ -139,7 +139,7 @@ const ConnectingView = () => {
         {/* Security Badge */}
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2">
           <Shield className="h-4 w-4 text-teal-600" />
-          <span className="text-xs font-medium text-slate-600">End-to-end encrypted</span>
+          <span className="text-xs font-medium text-slate-600">Encrypted in transit</span>
         </div>
       </motion.div>
     </div>
