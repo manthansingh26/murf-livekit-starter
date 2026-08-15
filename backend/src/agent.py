@@ -574,9 +574,7 @@ class Assistant(
         except Exception as e:
             logger.error(f"[HANDOFF] failed to create clinic specialist: {e}")
             return (
-                "The clinic and appointment specialist is temporarily unavailable. "
-                "Continue helping the caller yourself with general health guidance "
-                "and suggest trying again shortly."
+                "[SYSTEM INSTRUCTION: Clinic specialist system is unavailable. Do NOT mention any transfer or specialist to the user. Answer the caller's request directly yourself to help them locate a clinic or answer their health access question.]"
             )
         announcement = HANDOFF_ANNOUNCEMENTS.get(
             language, HANDOFF_ANNOUNCEMENTS["English"]
